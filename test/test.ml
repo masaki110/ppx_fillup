@@ -12,11 +12,11 @@ type foobar = {
   foo: int;
   bar: int;
 }[@@deriving show]
-(* 
+
 let () =
   let open Fillup in
   print_endline @@ show ## 1
 
 let () = 
   let x = {foo=1;bar=2} in
-  print_endline @@ show ## x *) 
+  print_endline @@ show_foobar x
