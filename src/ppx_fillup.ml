@@ -100,5 +100,6 @@ let transform str =
 
 let () =
   Ppxlib.Driver.register_transformation
-    ~impl:transform
+    (* ~impl:transform *)
+    ~instrument:(Ppxlib.Driver.Instrument.make ~position:After (transform))
     "ppx_fillup"
