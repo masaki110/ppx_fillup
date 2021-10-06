@@ -1,3 +1,5 @@
 (executable
  (name test)
- (preprocess (pps ppx_fillup)))
+ (preprocess (pps ppx_deriving.std
+                  ppx_fillup
+ )))

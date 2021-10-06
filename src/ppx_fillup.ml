@@ -1,23 +1,6 @@
 [@@@ warnerror "-26"]
 open Parsetree
 
-let hole loc = 
-  [%expr (assert false)[@HOLE]] 
-
-class my_map = object
-  inherit Ppxlib.Ast_traverse.map as super
-  method! expression exp =
-    match exp.pexp_desc with
-    | Pexp_apply(
-        {pexp_desc=Pexp_ident({txt=Lident("##"); _}); pexp_loc=loc_hole; _}, 
-        [(_, arg1); (_, arg2)]
-      ) -> 
-        Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes 
-          arg1 
-          [(Nolabel, hole loc_hole); (Nolabel, arg2)]
-    | _ -> super#expression exp
-  end
-
 let makeinstance env ty ident instty =
   if Ctype.matches env ty instty then
     Some ident
@@ -72,32 +55,48 @@ let resolve_instances ty env =
   in
   find_instances 0 (Env.summary env)
 
-let myuntyper = 
+let my_untyper = 
   let super = Untypeast.default_mapper in
   {Untypeast.default_mapper with
-    expr = 
-      (fun self (texp:Typedtree.expression) ->
-        match texp.exp_attributes with
-        | [{Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _}] ->
-          (* prerr_endline "here!"; *)
+    expr = (fun self (texp:Typedtree.expression) ->
+      match texp.exp_attributes with
+       | attr::_ ->
+        begin match attr with
+        {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
           begin match resolve_instances texp.exp_type texp.exp_env with
           | ident::_ -> 
             Ast_helper.Exp.ident 
               (Location.mknoloc 
                 (Longident.Lident (Ident.name ident)))
-          | [] ->
-            Location.raise_errorf ~loc "Instance not found:%a" 
-              Printtyp.type_expr texp.exp_type
-          end
-        | _ -> super.expr self texp)
+          | _ ->
+            Location.raise_errorf ~loc "Instance not found:%a" Printtyp.type_expr texp.exp_type
+          end 
+        | _ -> super.expr self texp
+        end
+      | _ -> super.expr self texp)
   }
+
+class my_map = object
+  inherit Ppxlib.Ast_traverse.map as super
+  method! expression exp =
+    match exp.pexp_desc with
+    | Pexp_apply(
+        {pexp_desc=Pexp_ident({txt=Lident("##"); _}); pexp_loc=loc_hole; _}, 
+        [(_, arg1); (_, arg2)]
+      ) -> 
+        let loc=loc_hole in
+        Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes 
+          arg1 
+          [(Nolabel, [%expr (assert false)[@HOLE]]); (Nolabel, arg2)]
+    | _ -> super#expression exp
+  end
 
 let transform str =
   let str = (new my_map)#structure str in
   Compmisc.init_path (); 
   let env = Compmisc.initial_env () in
   let (tstr, _, _, _) = Typemod.type_structure env str in
-  myuntyper.structure myuntyper tstr
+  my_untyper.structure my_untyper tstr
 
 let () =
   Ppxlib.Driver.register_transformation
