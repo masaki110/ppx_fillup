@@ -1,7 +1,7 @@
 [@@@ warnerror "-26"]
 open Parsetree
 
-let makeinstance env ty ident instty =
+let make_instance env ty ident instty =
   if Ctype.matches env ty instty then
     Some ident
   else
@@ -23,10 +23,10 @@ let resolve_instances ty env =
   | Env_value_unbound (s, _, _)
   | Env_module_unbound (s, _, _) -> 
     find_instances lvl s
-  | Env_value (s, ident, descr) ->
+  | Env_value (s, ident, desc) ->
     (* print_tab lvl;
     print_endline @@ Ident.name ident; *)
-    begin match makeinstance env ty ident descr.val_type with
+    begin match make_instance env ty ident desc.val_type with
     | Some i -> i :: find_instances lvl s
     | None -> find_instances lvl s
     end
@@ -43,10 +43,10 @@ let resolve_instances ty env =
       print_endline @@ "module: " ^ Path.name path; *)
       let md = Env.find_module path env in
       List.fold_left (fun res -> function
-        | Types.Sig_value (ident, descr, _) ->
+        | Types.Sig_value (ident, desc, _) ->
           (* print_tab lvl;
           print_endline @@ "  " ^ Ident.name ident; *)
-          begin match makeinstance env ty ident descr.val_type with
+          begin match make_instance env ty ident desc.val_type with
           | Some i -> i :: res
           | _ -> res
           end
@@ -55,14 +55,14 @@ let resolve_instances ty env =
   in
   find_instances 0 (Env.summary env)
 
-let my_untyper = 
+let untyper = 
   let super = Untypeast.default_mapper in
   {Untypeast.default_mapper with
     expr = (fun self (texp:Typedtree.expression) ->
       match texp.exp_attributes with
        | attr::_ ->
         begin match attr with
-        {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
+        | {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
           begin match resolve_instances texp.exp_type texp.exp_env with
           | ident::_ -> 
             Ast_helper.Exp.ident 
@@ -76,27 +76,34 @@ let my_untyper =
       | _ -> super.expr self texp)
   }
 
-class my_map = object
+class replace_hashhash = object
   inherit Ppxlib.Ast_traverse.map as super
   method! expression exp =
     match exp.pexp_desc with
-    | Pexp_apply(
-        {pexp_desc=Pexp_ident({txt=Lident("##"); _}); pexp_loc=loc_hole; _}, 
-        [(_, arg1); (_, arg2)]
-      ) -> 
-        let loc=loc_hole in
-        Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes 
-          arg1 
-          [(Nolabel, [%expr (assert false)[@HOLE]]); (Nolabel, arg2)]
+    | Pexp_apply({pexp_desc=Pexp_ident({txt=Lident("##"); _}); pexp_loc=loc_hole; _}, [(_, arg1); (_, arg2)]) -> 
+      let loc=loc_hole in
+      Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes 
+        arg1
+        [(Nolabel, [%expr (assert false)[@HOLE]]); (Nolabel, arg2)]
     | _ -> super#expression exp
-  end
+  (* method! type_declaration td = 
+    match td.ptype_attributes with
+    | [{attr_name={txt="deriving"; _}; attr_payload=pld_deriving; _}] -> 
+      begin match pld_deriving with
+      | PStr [{pstr_desc=Pstr_eval ([%expr show],_); _}] -> 
+        prerr_endline "here"; 
+        super#type_declaration td
+      | _ -> super#type_declaration td
+      end
+    | _ -> super#type_declaration td *)
+end
 
 let transform str =
-  let str = (new my_map)#structure str in
+  let str = (new replace_hashhash)#structure str in
   Compmisc.init_path (); 
   let env = Compmisc.initial_env () in
   let (tstr, _, _, _) = Typemod.type_structure env str in
-  my_untyper.structure my_untyper tstr
+  untyper.structure untyper tstr
 
 let () =
   Ppxlib.Driver.register_transformation

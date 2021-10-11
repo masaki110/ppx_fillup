@@ -1,5 +1,6 @@
 (executable
  (name test)
- (preprocess (staged_pps ppx_deriving.std
-                         ppx_fillup
- )))
+ (libraries ppx_fillup.plugin)
+ (preprocess (staged_pps ppx_deriving.std ppx_fillup ppx_fillup.deriver))
+ ;(preprocess (pps ppx_deriving ))
+)
