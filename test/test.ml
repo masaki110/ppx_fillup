@@ -2,39 +2,43 @@
 [@@@warnerror "-22"]
 ;;
 
+(* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
+open Ppx_fillup_plugin
+
 type foobar = {
   foo: int;
   bar: string;
-}[@@deriving show,eq,show_fill]
+}[@@deriving show,eq,fillup]
 
-let () =
-  print_endline my_deriver;
+let () = 
+  let x = {foo=1;bar="abc"} in
+  let y = {foo=2;bar="def"} in
+  print_endline @@ show ## x;
+  print_endline @@ string_of_bool @@ equal ## x y
 
-(* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
+(* type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
 
-type 'a show = {show:'a -> string}[@@typeclass]
-let show (dict:'a show) v = dict.show v
-module Fillup = struct
-  let _int[@instance] = {show=(fun x -> Printf.sprintf "\"%d\"" x)}
-  let _foobar[@instance] = {show=(fun x -> show_foobar x)}
-end
-open Fillup
+type 'a of_enum = {of_enum: int -> 'a option}[@@typeclass]
+let of_enum (dict:'a of_enum) v = dict.of_enum v
+let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)}
 
-type 'a equal = {equal:'a -> 'a -> bool}[@@typeclass]
-let equal (dict:'a equal) v w = dict.equal v w
-let _foobar_eq[@instance] = {equal=(fun x y -> equal_foobar x y)}
-
+let () = 
+  let _x = {foo=1;bar="abc"} in
+  (* print_endline @@ show ## x; *)
+  (* print_endline @@ show (_list _foobar) [x;x] *)
+  (* print_endline @@ string_of_bool @@ equal ## _x _x; *)
+  (* print_endline @@ string_of_int @@ compare ## _x _x; *)
+  (* print_endline @@ string_of_int @@ to_enum ## Moge; *)
+  match of_enum ## 0 with
+  | Some Hoge -> print_endline "Hoge" 
+  | Some Moge -> print_endline "Moge" 
+  | Some Fuga -> print_endline "Fuga"
+  | _ -> print_endline "None"  *)
 
 (* let _list (inner:'a show) = {show = (fun xs -> String.concat ";" (List.map inner.show xs))} *)
 
 (* let () =
   print_endline @@ show ## 1 *)
-
-let () = 
-  let x = {foo=1;bar="abc"} in
-  print_endline @@ show ## x;
-  print_endline @@ string_of_bool @@ equal ## x x;
-  (* print_endline @@ show (_list _foobar) [x;x] *)
 
 
 (* 
