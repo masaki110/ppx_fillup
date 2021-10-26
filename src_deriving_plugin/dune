@@ -1,5 +1,0 @@
-(library
- (name ppx_fillup_plugin)
- (public_name ppx_fillup.plugin)
- (preprocess (staged_pps ppx_deriving.std ppx_fillup ppx_fillup.deriver))
-)
