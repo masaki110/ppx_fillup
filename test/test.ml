@@ -1,42 +1,41 @@
 (* don't make preprocessor warnings as errors *)
 [@@@warnerror "-22"]
-;;
 
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_plugin
 
 (* to do
   1. Make ONLY instances that correspond to the specified deriving plugin.
-  2. Allow for polymorphic arguments.
-  3. Give each HOLE a unique type.
+  2. Allow for polymorphic arguments. -> An instance has been created. (Date 10/27)
+  3. Give each HOLE a unique type. -> Cleare. (Date 10/27)
 *)
 
-(* 
-type foobar = {
+(* type foobar = {
   foo: int;
   bar: string;
 }[@@deriving show,eq,ord,fillup]
 
 let () = 
   let x = {foo=1;bar="abc"} in
-  let _y = {foo=2;bar="def"} in
-  print_endline @@ show ## x; *)
-  (* print_endline @@ string_of_bool @@ equal ## x _y; *)
-  (* print_endline @@ string_of_int @@ compare ## x _y; *)
+  let y = {foo=2;bar="def"} in
+  print_endline @@ show ## x;
+  print_endline @@ string_of_bool @@ equal ## x y;
+  print_endline @@ string_of_int @@ compare ## x y *)
 
-type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,fillup]
-let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)}
+type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,eq,ord,fillup]
+
+(* let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)} *)
 let _inst_show_int[@instance] = {pp=Format.pp_print_int}
 
 let () =
 let x = (Node (Leaf 1, Leaf 2)) in
 (* print_endline @@ show_tree Format.pp_print_int x *)
-(* print_endline @@ show ##  x *)
-(* print_endline @@ show (_inst_show_tree ((assert false)[@HOLE]) : ('a tree) pp) x *)
-(* print_endline @@ show (_inst_show_tree _int_show : (int tree) show)  x *) 
+(* print_endline @@ show ## x *)
+(* print_endline @@ show (_inst_show_tree ##) x *)
+print_endline @@ show (_inst_show_tree ((assert false)[@HOLE]) : ('a tree) pp) x;
+(* print_endline @@ show (_inst_show_tree _inst_show_int : (int tree) pp) x; *)
 
-(* 
-type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
+(* type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
 let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)}
 
 let () = 
@@ -44,8 +43,8 @@ let () =
   | Some Hoge -> print_endline "Hoge" 
   | Some Moge -> print_endline "Moge" 
   | Some Fuga -> print_endline "Fuga"
-  | _ -> print_endline "None"
-  *)
+  | _ -> print_endline "None" *)
+ 
 (*
   subtyping の説明
   [`A] <: [`A | `B]
