@@ -5,35 +5,139 @@
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_plugin
 
+(* to do
+  1. Make ONLY instances that correspond to the specified deriving plugin.
+  2. Allow for polymorphic arguments.
+  3. Give each HOLE a unique type.
+*)
+
+(* 
 type foobar = {
   foo: int;
   bar: string;
-}[@@deriving show,eq,fillup]
+}[@@deriving show,eq,ord,fillup]
 
 let () = 
   let x = {foo=1;bar="abc"} in
-  let y = {foo=2;bar="def"} in
-  print_endline @@ show ## x;
-  print_endline @@ string_of_bool @@ equal ## x y
+  let _y = {foo=2;bar="def"} in
+  print_endline @@ show ## x; *)
+  (* print_endline @@ string_of_bool @@ equal ## x _y; *)
+  (* print_endline @@ string_of_int @@ compare ## x _y; *)
 
-(* type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
+type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,fillup]
+let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)}
+let _inst_show_int[@instance] = {pp=Format.pp_print_int}
 
-type 'a of_enum = {of_enum: int -> 'a option}[@@typeclass]
-let of_enum (dict:'a of_enum) v = dict.of_enum v
+let () =
+let x = (Node (Leaf 1, Leaf 2)) in
+(* print_endline @@ show_tree Format.pp_print_int x *)
+(* print_endline @@ show ##  x *)
+(* print_endline @@ show (_inst_show_tree ((assert false)[@HOLE]) : ('a tree) pp) x *)
+(* print_endline @@ show (_inst_show_tree _int_show : (int tree) show)  x *) 
+
+(* 
+type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
 let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)}
 
 let () = 
-  let _x = {foo=1;bar="abc"} in
-  (* print_endline @@ show ## x; *)
-  (* print_endline @@ show (_list _foobar) [x;x] *)
-  (* print_endline @@ string_of_bool @@ equal ## _x _x; *)
-  (* print_endline @@ string_of_int @@ compare ## _x _x; *)
-  (* print_endline @@ string_of_int @@ to_enum ## Moge; *)
   match of_enum ## 0 with
   | Some Hoge -> print_endline "Hoge" 
   | Some Moge -> print_endline "Moge" 
   | Some Fuga -> print_endline "Fuga"
-  | _ -> print_endline "None"  *)
+  | _ -> print_endline "None"
+  *)
+(*
+  subtyping の説明
+  [`A] <: [`A | `B]
+
+  <a:int; b:string> <: <a:int>
+
+  'a option は 型引数 'a について covariant かつ
+  [`A] <: [`A | `B] なので
+  [`A] option <: [`A | `B] option
+
+  'a -> unit は 型引数 'a について contravariant かつ
+  [`A] <: [`A | `B] なので
+  [`A | `B] -> unit <: [`A] -> unit
+
+*)
+(* 
+value restriction の説明
+
+let r = ref None (* <- ここが式なので value restriction の対象になる*)
+(* r : '_weak option ref <-- '_weak は単相的 *)
+
+let () =
+  r := Some 1 
+ここで
+(* r : int option ref *)
+*)
+
+(*
+relaxed value restriction: covariant な型コンストラクタはvalue restrictionの対象にならない
+*)
+
+(* let r2 = Some (assert false) *)
+
+(* let () =
+  let x = (assert false)[@HOLE] (* forall 'a. 'a *)
+  in
+  print_int (x + 1);
+  print_string x *)
+
+(* let f = ((assert false)[@HOLE])
+
+let g = show f 123 *)
+
+(* type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
+
+type 'a of_enum = {of_enum: int -> 'a option}[@@typeclass] (* <-- covariant になってしまう！！*)
+let of_enum (dict:'a of_enum) v = dict.of_enum v
+let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)} *)
+
+
+(* むりやり非covariantにするには, 抽象型にする*)
+(* 
+module N : sig
+  type 'a of_enum
+  val make_of_enum : (int -> 'a option) -> 'a of_enum
+  val get_of_enum : 'a of_enum -> int -> 'a option
+end = struct
+  type 'a of_enum = {of_enum: int -> 'a option}
+  let make_of_enum f = {of_enum=f}
+  let get_of_enum {of_enum} = of_enum
+end
+open N
+let of_enum (dict:'a of_enum) v = get_of_enum dict v
+let _of_enum[@instance] = make_of_enum (fun x -> hogemoge_of_enum x) *)
+
+(* let f x =
+match x with
+| Hoge -> print_endline "Hoge" 
+| Moge -> print_endline "Moge" 
+| Fuga -> print_endline "Fuga" *)
+(* 
+let () = 
+  (* let x = of_enum (assert false) 0 in *)
+  (* f (Option.get x); *)
+  (* match x with
+  | Some Hoge -> print_endline "Hoge" 
+  | Some Moge -> print_endline "Moge" 
+  | Some Fuga -> print_endline "Fuga"
+  | _ -> print_endline "None"; *)
+  match of_enum ## 0 with
+  | Some Hoge -> print_endline "Hoge" 
+  | Some Moge -> print_endline "Moge" 
+  | Some Fuga -> print_endline "Fuga"
+  | _ -> print_endline "None";
+  (* match of_enum ## 0 with
+  | Some Hoge -> print_endline "Hoge" 
+  | Some Moge -> print_endline "Moge" 
+  | Some Fuga -> print_endline "Fuga"
+  | None -> print_endline "NONE" *)
+  (* f (Option.get (of_enum ## 0)) *)
+ *)
+
 
 (* let _list (inner:'a show) = {show = (fun xs -> String.concat ";" (List.map inner.show xs))} *)
 

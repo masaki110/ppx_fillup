@@ -60,7 +60,7 @@ let untyper =
   {Untypeast.default_mapper with
     expr = (fun self (texp:Typedtree.expression) ->
       match texp.exp_attributes with
-       | attr::_ ->
+      | attr::_ ->
         begin match attr with
         | {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
           begin match resolve_instances texp.exp_type texp.exp_env with
@@ -73,8 +73,32 @@ let untyper =
           end 
         | _ -> super.expr self texp
         end
-      | _ -> super.expr self texp)
+      | _ ->
+        begin match texp.exp_extra with 
+        | (_,_,attr::_)::_->
+          begin match attr with
+          | {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
+            begin match resolve_instances texp.exp_type texp.exp_env with
+            | ident::_ -> 
+              Ast_helper.Exp.ident 
+                (Location.mknoloc 
+                  (Longident.Lident (Ident.name ident)))
+            | _ ->
+              Location.raise_errorf ~loc "Instance not found:%a" Printtyp.type_expr texp.exp_type
+            end
+          | _ -> 
+            super.expr self texp
+          end
+        | _ -> super.expr self texp
+        end)
   }
+
+let make_type_annotation cnt =
+  let cnt = cnt + 1 in
+  (* Ppx_deriving.Ast_convenience.evar @@ "'tmp_" ^ (string_of_int cnt) *)
+  Ast_helper.Typ.var @@ "'fillup_tmp_" ^ (string_of_int cnt)
+
+let cnt = 1
 
 class replace_hashhash = object
   inherit Ppxlib.Ast_traverse.map as super
@@ -82,8 +106,10 @@ class replace_hashhash = object
     match exp.pexp_desc with
     | Pexp_apply({pexp_desc=Pexp_ident({txt=Lident("##"); _}); pexp_loc=loc_hole; _}, [(_, arg1); (_, arg2)]) -> 
       let loc=loc_hole in
+      let _cnt=cnt+1 in
       Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes 
         arg1
+        (* [(Nolabel, [%expr ((assert false:[%t make_type_annotation _cnt]))[@HOLE]]); (Nolabel, arg2)] *)
         [(Nolabel, [%expr (assert false)[@HOLE]]); (Nolabel, arg2)]
     | _ -> super#expression exp
   (* method! type_declaration td = 
