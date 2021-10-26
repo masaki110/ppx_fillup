@@ -93,12 +93,12 @@ let untyper =
         end)
   }
 
-let make_type_annotation cnt =
-  let cnt = cnt + 1 in
-  (* Ppx_deriving.Ast_convenience.evar @@ "'tmp_" ^ (string_of_int cnt) *)
-  Ast_helper.Typ.var @@ "'fillup_tmp_" ^ (string_of_int cnt)
 
-let cnt = 1
+let make_type_annotation =
+  let cnt = ref 0 in
+  fun () ->
+    cnt := !cnt+1;
+    Ast_helper.Typ.var @@ "fillup_tmp_" ^ (string_of_int !cnt)
 
 class replace_hashhash = object
   inherit Ppxlib.Ast_traverse.map as super
@@ -106,22 +106,10 @@ class replace_hashhash = object
     match exp.pexp_desc with
     | Pexp_apply({pexp_desc=Pexp_ident({txt=Lident("##"); _}); pexp_loc=loc_hole; _}, [(_, arg1); (_, arg2)]) -> 
       let loc=loc_hole in
-      let _cnt=cnt+1 in
       Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes 
         arg1
-        (* [(Nolabel, [%expr ((assert false:[%t make_type_annotation _cnt]))[@HOLE]]); (Nolabel, arg2)] *)
-        [(Nolabel, [%expr (assert false)[@HOLE]]); (Nolabel, arg2)]
+        [(Nolabel, [%expr ((assert false:[%t make_type_annotation ()]))[@HOLE]]); (Nolabel, arg2)]
     | _ -> super#expression exp
-  (* method! type_declaration td = 
-    match td.ptype_attributes with
-    | [{attr_name={txt="deriving"; _}; attr_payload=pld_deriving; _}] -> 
-      begin match pld_deriving with
-      | PStr [{pstr_desc=Pstr_eval ([%expr show],_); _}] -> 
-        prerr_endline "here"; 
-        super#type_declaration td
-      | _ -> super#type_declaration td
-      end
-    | _ -> super#type_declaration td *)
 end
 
 let transform str =
@@ -133,6 +121,5 @@ let transform str =
 
 let () =
   Ppxlib.Driver.register_transformation
-    (* ~impl:transform *)
     ~instrument:(Ppxlib.Driver.Instrument.make ~position:After (transform))
     "ppx_fillup"
