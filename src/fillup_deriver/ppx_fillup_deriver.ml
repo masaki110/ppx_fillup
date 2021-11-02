@@ -1,56 +1,81 @@
-open Parsetree
-open Ast_helper
-
-let pvar = Ppx_deriving.Ast_convenience.pvar
-let evar = Ppx_deriving.Ast_convenience.evar
 (* Reference : 
     https://github.com/ocaml-ppx/ppx_deriving/blob/master/src_plugins/show/ppx_deriving_show.cppo.ml *)
 
-(* generate instance : 
-  e.g. let _inst_show_foobar[@instance] = {show=(fun x -> show_foobar x)} *)
+open Parsetree
+open Ast_helper
+
+let mkloc (txt:'a) loc = ({ txt; loc }:'a with_loc)
+
+let mknoloc = Location.mknoloc
+
+let evar name = Exp.ident @@ mknoloc (Ppxlib.Longident.parse name)
+  
+let pvar name = Pat.var @@ mknoloc name
+
+let fold_right_type_decl fn ({ptype_params;_}:type_declaration) accum =
+  List.fold_right (fun (param, _) accum ->
+    match param with
+  | { ptyp_desc = Ptyp_any; _ } -> accum
+  | { ptyp_desc = Ptyp_var name; _ } ->
+    let name = mkloc name param.ptyp_loc in
+    fn name accum
+  | _ -> assert false) ptype_params accum
+
+(* generate instance : e.g. let _inst_show_foobar[@instance] = {show=(fun x -> show_foobar x)} *)
 let str_of_type plugins ({ptype_loc = loc; _} as type_decl)  =
-  let expr_of_string fix str =
-    match fix with
-    | `Suffix ->
-      evar @@ Ppx_deriving.mangle_type_decl (`Suffix str) type_decl
-    | `Prefix -> 
-      evar @@ Ppx_deriving.mangle_type_decl (`Prefix str) type_decl in
-  let poly_inner =
-    Ppx_deriving.fold_right_type_decl (fun name expr ->
+  let mangle fixpoint name = 
+    match fixpoint with
+    | `Prefix x -> x ^ "_" ^ name
+    | `Suffix x -> name ^ "_" ^ x
+  in
+  let mangle_type_decl fixpoint =
+    let name = type_decl.ptype_name.txt in
+    mangle fixpoint name
+  in
+  let expr_of_string fixpoint = evar @@ mangle_type_decl fixpoint in
+  let nonpoly_inner =
+    fold_right_type_decl (fun name expr ->
       let name = name.txt in
-      [%expr [%e expr] [%e evar ("poly_"^name)]]) type_decl in
-  let of_enum_expr = [%expr {of_enum=(fun x -> [%e poly_inner @@ expr_of_string `Suffix "of_enum"] poly_a x)}] in
-  let to_enum_expr = [%expr {to_enum=(fun x -> [%e poly_inner @@ expr_of_string `Suffix "to_enum"] poly_a x)}] in
-  let compare_expr = [%expr {compare=(fun x y -> [%e poly_inner @@ expr_of_string `Prefix "compare"] x y)}] in
-  let equal_expr = [%expr {equal=(fun x y -> [%e poly_inner @@ expr_of_string `Prefix "equal"] x y)}] in
-  let show_expr = 
+      [%expr [%e expr] [%e evar ("poly_"^name)]]) type_decl
+  in
+  let of_enum_expr = [%expr {of_enum=(fun x -> [%e nonpoly_inner @@ expr_of_string (`Suffix "of_enum")] poly_a x)}] in
+  let to_enum_expr = [%expr {to_enum=(fun x -> [%e nonpoly_inner @@ expr_of_string (`Suffix "to_enum")] poly_a x)}] in
+  let compare_expr = [%expr {compare=(fun x y -> [%e nonpoly_inner @@ expr_of_string (`Prefix "compare")] x y)}] in
+  let equal_expr = [%expr {equal=(fun x y -> [%e nonpoly_inner @@ expr_of_string (`Prefix "equal")] x y)}] in
+  (* let poly_inner inner =
     let expr = 
-      let expr = expr_of_string `Prefix "pp" in
+      let inner_expr = expr_of_string (`Prefix inner) in
       Ppx_deriving.fold_right_type_decl (fun name expr ->
         let name = name.txt in
-        [%expr [%e expr] [%e evar ("poly_"^name)].pp]) type_decl expr
+        [%expr [%e expr] [%e evar ("poly_"^name)].pp]) type_decl inner_expr
     in
-    [%expr {pp=(fun x -> [%e expr] x)}] in
-  let polymorphize = Ppx_deriving.poly_fun_of_type_decl type_decl in
+    [%expr {pp=(fun x -> [%e expr] x)}]
+  in *)
+  let show_expr =
+    let expr = 
+      let inner_expr = expr_of_string (`Prefix "pp") in
+      fold_right_type_decl (fun name expr ->
+        let name = name.txt in
+        [%expr [%e expr] [%e evar ("poly_"^name)].pp]) type_decl inner_expr
+    in
+    [%expr {pp=(fun x -> [%e expr] x)}]
+  in
+  let poly_fun_of_type_decl type_decl expr = (**)
+    fold_right_type_decl (fun name expr ->
+      let name = name.txt in
+      (* Exp.fun_ Nolabel None (pvar ("poly_"^name)) expr *)
+      [%expr fun [%p (pvar ("poly_"^name))] -> [%e expr]]
+      ) type_decl expr
+  in
+  let polymorphize = poly_fun_of_type_decl type_decl in
   let pat_of_string str = 
-    Ast_helper.Pat.var ~attrs:[Attr.mk (Location.mknoloc "instance") (PStr [Ast_helper.Str.eval [%expr ()]])]
-      @@ Location.mknoloc @@ Ppx_deriving.mangle_type_decl (`Prefix ("_inst_" ^ str)) type_decl in
-  (* let _plugins = plugins in 
-  let _of_enum_expr = of_enum_exprin
-  let _to_enum_expr = to_enum_expr in
-  [ Vb.mk (pat_of_string "show") (polymorphize show_expr);
-  (* Vb.mk (pat_of_string "polymorphic_show") (polymorphize poly_show_expr); *)
-  Vb.mk (pat_of_string "equal") (polymorphize equal_expr);
-  Vb.mk (pat_of_string "compare") (polymorphize compare_expr);
-  (* Vb.mk (pat_of_string "to_enum") (polymorphize to_enum_expr); *)
-  (* Vb.mk (pat_of_string "of_enum") (polymorphize of_enum_expr); *)
-  ]  *)
+    Pat.var ~attrs:[Attr.mk (mknoloc "instance") (PStr [Str.eval [%expr ()]])]
+      @@ mknoloc @@ mangle_type_decl (`Prefix ("_inst_" ^ str))
+  in
   let rec check_plugin plugins =
-    (* let mk id body = Vb.mk ~attrs:[Attr.mk (Location.mknoloc "instance") (PStr [Ast_helper.Str.eval [%expr ()]])] id body in *)
     match plugins with
     | [""] -> 
       [Vb.mk (pat_of_string "show") (polymorphize show_expr);
-      (* Vb.mk (pat_of_string "polymorphic_show") (polymorphize poly_show_expr); *)
        Vb.mk (pat_of_string "equal") (polymorphize equal_expr);
        Vb.mk (pat_of_string "compare") (polymorphize compare_expr);
       (* Vb.mk (pat_of_string "to_enum") (polymorphize to_enum_expr); *)
@@ -73,20 +98,22 @@ let str_of_type plugins ({ptype_loc = loc; _} as type_decl)  =
   in
   check_plugin plugins
 
-let get_plugins () =
-  match Ocaml_common.Ast_mapper.get_cookie "ppx_deriving" with
-  | None -> []
-  | Some expr ->
-      match Ppxlib_ast__.Import.Selected_ast.Of_ocaml.copy_expression expr with
-      | { pexp_desc = Pexp_tuple exprs; _} ->
-        exprs |> List.map (fun expr ->
-          match expr with
-          | { pexp_desc = Pexp_constant (Pconst_string (file, _, None)); _} -> file
-          | _ -> assert false)
-      | _ -> assert false
+module M = struct
+  let get_plugins () =
+    match Ocaml_common.Ast_mapper.get_cookie "ppx_deriving" with
+    | None -> []
+    | Some expr ->
+        match Ppxlib_ast.Selected_ast.Of_ocaml.copy_expression expr with
+        | { pexp_desc = Pexp_tuple exprs; _} ->
+          exprs |> List.map (fun expr ->
+            match expr with
+            | { pexp_desc = Pexp_constant (Pconst_string (file, _, None)); _} -> file
+            | _ -> assert false)
+        | _ -> assert false
+end
 
 let () =
-  let plugins = get_plugins () in
+  let _plugins = M.get_plugins () in
   let deriver = 
     Ppx_deriving.create "fillup"
       ~type_decl_str: 
@@ -97,5 +124,6 @@ let () =
           (List.concat (List.map (str_of_type [""]) type_decls))])
       ()
   in
-  List.iter (prerr_endline) plugins;
+  (* prerr_endline "plugins : ";
+  prerr_endline @@ string_of_int @@ List.length plugins; *)
   Ppx_deriving.register deriver

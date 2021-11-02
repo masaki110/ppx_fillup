@@ -1,7 +1,6 @@
 (* Plugin : show *)
 type 'a pp = {pp:Format.formatter -> 'a -> unit}[@@typeclass]
 let show (dict:'a pp) v = Format.asprintf "%a" dict.pp v
-(* let _show_pp_foobar[@instance] = {pp=(fun x -> pp_foobar x)} *)
 (* let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)} *)
 
 (* Plugin : eq *)

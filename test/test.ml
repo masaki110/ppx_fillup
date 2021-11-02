@@ -1,5 +1,6 @@
 (* don't make preprocessor warnings as errors *)
 [@@@warnerror "-22"]
+;;
 
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_plugin
@@ -10,7 +11,7 @@ open Ppx_fillup_plugin
   3. Give each HOLE a unique type. -> Cleare. (Date 10/27)
 *)
 
-(* type foobar = {
+type foobar = {
   foo: int;
   bar: string;
 }[@@deriving show,eq,ord,fillup]
@@ -20,20 +21,27 @@ let () =
   let y = {foo=2;bar="def"} in
   print_endline @@ show ## x;
   print_endline @@ string_of_bool @@ equal ## x y;
-  print_endline @@ string_of_int @@ compare ## x y *)
+  print_endline @@ string_of_bool @@ equal_foobar x y;
+  print_endline @@ string_of_int @@ compare ## x y
 
 type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,eq,ord,fillup]
+(* type 'a forest = Trees of 'a tree * 'a tree [@@deriving show,eq,ord,fillup] *)
 
-(* let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)} *)
 let _inst_show_int[@instance] = {pp=Format.pp_print_int}
 
-let () =
-let x = (Node (Leaf 1, Leaf 2)) in
-(* print_endline @@ show_tree Format.pp_print_int x *)
-(* print_endline @@ show ## x *)
-(* print_endline @@ show (_inst_show_tree ##) x *)
-print_endline @@ show (_inst_show_tree ((assert false)[@HOLE]) : ('a tree) pp) x;
-(* print_endline @@ show (_inst_show_tree _inst_show_int : (int tree) pp) x; *)
+let int =
+  let x = (Node (Leaf 1, Leaf 2)) in
+  (* print_endline @@ show_tree Format.pp_print_int x *)
+  print_endline @@ show ## x;
+  (* print_endline @@ show (_inst_show_tree ((assert false)[@HOLE])) x; *)
+  (* print_endline @@ show (_inst_show_tree _inst_show_int : (int tree) pp) x; *)
+  x
+
+
+(* let () =
+  let x = (Node (Leaf 1, Leaf 2)) in
+  let xs = (Trees ( x, x)) in
+  print_endline @@ show (_inst_show_forest (_inst_show_tree ((assert false)[@HOLE]))) xs *)
 
 (* type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
 let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)}
@@ -93,6 +101,25 @@ let g = show f 123 *)
 type 'a of_enum = {of_enum: int -> 'a option}[@@typeclass] (* <-- covariant になってしまう！！*)
 let of_enum (dict:'a of_enum) v = dict.of_enum v
 let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)} *)
+
+(*
+type ('a,'b) tree
+[@@deriving show,fillup]
+
+let inst_show_tree poly-a poly-b = {pp=(fun x -> pp_tree poly_a.pp poly_b.pp x)}
+
+what is poly_fun_of_type_decl??
+
+poly_fun_of_type_decl binop expr typedecl
+==
+((expr binop 'a') binop 'b')
+
+List.fold_right biop (x1::(x2::(x3::[]))) e
+==
+x1 binop (x2 binop (x3 binop e))
+
+(fun name expr -> [%expr [%e expr] [%e var name].pp])
+*)
 
 
 (* むりやり非covariantにするには, 抽象型にする*)
