@@ -6,9 +6,10 @@
 open Ppx_fillup_plugin
 
 (* to do
-  1. Make ONLY instances that correspond to the specified deriving plugin.
-  2. Allow for polymorphic arguments. -> An instance has been created. (Date 10/27)
-  3. Give each HOLE a unique type. -> Cleare. (Date 10/27)
+  1. derivingを利用しているopamプロジェクトを探す
+  2. derivingの関数をfillup用のものに置き換える 
+    e.g. print_endline @@ show_foobar x; -->  print_endline @@ show_foobar x;
+  3. ベンチマーク
 *)
 
 type foobar = {
@@ -20,22 +21,25 @@ let () =
   let x = {foo=1;bar="abc"} in
   let y = {foo=2;bar="def"} in
   print_endline @@ show ## x;
-  print_endline @@ string_of_bool @@ equal ## x y;
-  print_endline @@ string_of_bool @@ equal_foobar x y;
-  print_endline @@ string_of_int @@ compare ## x y
+  (*print_endline @@ ((assert false)[@HOLE]) x; --> *)
+  (* print_endline @@ show_foobar x; *)
+  (* -->  print_endline @@ show_foobar x; *)
+  let eq = (equal ## x y) in
+  (* print_endline @@ show ## eq; *)
+  print_endline @@ string_of_bool (equal ## x y);
+  (* print_endline @@ string_of_bool @@ equal_foobar x y; *)
+  print_endline @@ string_of_int @@ compare ## x y;
+  ()
 
 type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,eq,ord,fillup]
 (* type 'a forest = Trees of 'a tree * 'a tree [@@deriving show,eq,ord,fillup] *)
 
-let _inst_show_int[@instance] = {pp=Format.pp_print_int}
-
-let int =
-  let x = (Node (Leaf 1, Leaf 2)) in
-  (* print_endline @@ show_tree Format.pp_print_int x *)
-  print_endline @@ show ## x;
-  (* print_endline @@ show (_inst_show_tree ((assert false)[@HOLE])) x; *)
-  (* print_endline @@ show (_inst_show_tree _inst_show_int : (int tree) pp) x; *)
-  x
+let () =
+  (* let x = (Node (Leaf 1, Leaf 2)) in *)
+  (* print_endline @@ show ## x; *)
+  (* print_endline ## x; --> *)
+  (* print_endline @@ (show_tree Format.pp_print_int) x; *)
+  ()
 
 
 (* let () =

@@ -1,12 +1,6 @@
 [@@@ warnerror "-26"]
 open Parsetree
 
-let prerr =
-  let out = open_out "/tmp/log.txt" in
-  fun str ->
-    output_string out (str^"\n");
-    flush out
-    
 type instance = Poly of int * Ident.t | Nonpoly of Ident.t
 
 let make_hole =
@@ -23,9 +17,7 @@ let rec apply_holes n exp =
     let loc=exp.pexp_loc in
     apply_holes (n-1) [%expr [%e exp] [%e make_hole loc]]
 
-let rec make_instance env ty ident (instty:Types.type_expr) =
-  prerr_endline @@ Format.asprintf "%a" Printtyp.type_expr instty;
-
+let rec make_instance env ty ident instty =
   match (Ctype.repr @@ Ctype.expand_head env instty).desc with
   | Tarrow (_,_,ret,_) -> 
     begin  match make_instance env ty ident ret with
@@ -39,9 +31,10 @@ let rec make_instance env ty ident (instty:Types.type_expr) =
     else  
       None
 
+let is_instance (desc : Types.value_description) = 
+  List.exists (fun attr -> attr.attr_name.txt="instance") desc.val_attributes 
+
 let resolve_instances ty env =
-  (* let set_attr_inst (desc : Types.value_description) = 
-    List.exists (fun attr -> attr.attr_name.txt="instance") desc.val_attributes in *)
   let rec find_instances lvl = function
   | Env.Env_empty -> []
   | Env_extension (s, _, _)
@@ -58,10 +51,8 @@ let resolve_instances ty env =
   | Env_module_unbound (s, _, _) -> 
     find_instances lvl s
   | Env_value (s, ident, desc) ->
-    (* print_tab lvl;
-    print_endline @@ Ident.name ident; *)
-    if List.exists (fun attr -> attr.attr_name.txt="instance") desc.val_attributes then
-      begin prerr_endline "here"; prerr_endline @@ Ident.name ident;  match make_instance env ty ident desc.val_type with
+    if is_instance desc then
+      begin match make_instance env ty ident desc.val_type with
       | Some i -> i :: find_instances lvl s
       | None -> find_instances lvl s
       end
@@ -75,15 +66,11 @@ let resolve_instances ty env =
     in
     let lvl = lvl + 1 in
     let rest = find_instances lvl s in
-    (* print_tab lvl;
-    print_endline @@ "module: " ^ Path.name path; *)
     let md = Env.find_module path env in
     List.fold_left (fun res -> function
       | Types.Sig_value (ident, desc, _) ->
-        if List.exists (fun attr -> attr.attr_name.txt="instance") desc.val_attributes then
-          (* print_tab lvl;
-          print_endline @@ "  " ^ Ident.name ident; *)
-          begin prerr_endline "here2"; prerr_endline @@ Ident.name ident; match make_instance env ty ident desc.val_type with
+        if is_instance desc  then
+          begin match make_instance env ty ident desc.val_type with
           | Some i -> i :: res
           | _ -> res
           end
@@ -95,42 +82,28 @@ let resolve_instances ty env =
 
 let untyper = 
   let super = Untypeast.default_mapper in
+  let evar ident =
+    Ast_helper.Exp.ident (Location.mknoloc (Longident.Lident (Ident.name ident))) 
+  in
+  let lookup_hole self attr (texp:Typedtree.expression) = 
+    match attr with
+    | {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
+      begin match resolve_instances texp.exp_type texp.exp_env with
+      | Nonpoly ident::_ -> evar ident 
+      | Poly (n,ident)::_ -> [%expr [%e apply_holes n @@ evar ident]]
+      | _ ->
+        Location.raise_errorf ~loc "Instance not found:%a" Printtyp.type_expr texp.exp_type
+      end
+    | _ -> 
+      super.expr self texp
+  in
   {Untypeast.default_mapper with
     expr = fun self (texp:Typedtree.expression) ->
-      let lookup_hole attr = 
-        match attr with
-        | {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
-          begin match resolve_instances texp.exp_type texp.exp_env with
-          | Nonpoly ident::_ ->
-            Ast_helper.Exp.ident 
-              (Location.mknoloc 
-                (Longident.Lident (Ident.name ident)))
-          | Poly (n,ident)::_ ->
-            prerr "Poly";
-            let exp =         
-            [%expr [%e apply_holes n 
-              (Ast_helper.Exp.ident 
-                (Location.mknoloc 
-                  (Longident.Lident (Ident.name ident))))]]
-            in
-            prerr "Poly done";
-            exp
-          | _ ->
-            Location.raise_errorf ~loc "Instance not found:%a" Printtyp.type_expr texp.exp_type
-          end
-        | _ -> 
-          super.expr self texp
-      in
-      match texp.exp_attributes with
-      | attr::_ -> 
-        lookup_hole attr
-      | _ ->
-        begin match texp.exp_extra with 
-        | (_,_,attr::_)::_ -> 
-          lookup_hole attr
-        | _ -> 
-          super.expr self texp
-        end
+      
+      match texp.exp_attributes, texp.exp_extra with
+      | attr::_, _ -> lookup_hole self attr texp
+      | _, (_,_,attr::_)::_ -> lookup_hole self attr texp
+      | _ -> super.expr self texp
   }
 
 class replace_hashhash = object
@@ -147,26 +120,20 @@ end
 
 let transform str =
   let str = (new replace_hashhash)#structure str in
-  let rec loop str n =
+  let rec loop str =
     Compmisc.init_path (); 
     let env = Compmisc.initial_env () in
     let (tstr, _, _, _) = Typemod.type_structure env str in
     let untypstr = untyper.structure untyper tstr in
-    if str=untypstr || n=0 then
-      let out = open_out "/tmp/foo.ml" in
+    if str=untypstr then
+      let out = open_out "/Users/itomasaki/ctlab/ocaml/ppx-workspace/foo.ml" in
       output_string out (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
       close_out out;
       untypstr
     else
-      begin
-        (* loop untypstr *)
-        (* let out = open_out "/tmp/foo.ml" in
-        output_string out (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
-        close_out out; *)
-        loop untypstr (n-1)
-      end
+      loop untypstr
   in
-  loop str 5
+  loop str
 
 let () =
   Ppxlib.Driver.register_transformation
