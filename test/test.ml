@@ -1,6 +1,5 @@
 (* don't make preprocessor warnings as errors *)
 [@@@warnerror "-22"]
-;;
 
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_plugin
@@ -17,37 +16,18 @@ type foobar = {
   bar: string;
 }[@@deriving show,eq,ord,fillup]
 
+let _inst_show_int[@instance] ={pp=Format.pp_print_int}
+let _inst_show_bool[@instance] = {pp=Format.pp_print_bool}
+
 let () = 
   let x = {foo=1;bar="abc"} in
   let y = {foo=2;bar="def"} in
   print_endline @@ show ## x;
-  (*print_endline @@ ((assert false)[@HOLE]) x; --> *)
-  (* print_endline @@ show_foobar x; *)
-  (* -->  print_endline @@ show_foobar x; *)
-  let eq = (equal ## x y) in
-  (* print_endline @@ show ## eq; *)
-  print_endline @@ string_of_bool (equal ## x y);
-  (* print_endline @@ string_of_bool @@ equal_foobar x y; *)
-  print_endline @@ string_of_int @@ compare ## x y;
+  print_endline @@ show ## (equal ## x y);
+  print_endline @@ show ## (compare ## x y);
   ()
 
-type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,eq,ord,fillup]
-(* type 'a forest = Trees of 'a tree * 'a tree [@@deriving show,eq,ord,fillup] *)
-
-let () =
-  (* let x = (Node (Leaf 1, Leaf 2)) in *)
-  (* print_endline @@ show ## x; *)
-  (* print_endline ## x; --> *)
-  (* print_endline @@ (show_tree Format.pp_print_int) x; *)
-  ()
-
-
-(* let () =
-  let x = (Node (Leaf 1, Leaf 2)) in
-  let xs = (Trees ( x, x)) in
-  print_endline @@ show (_inst_show_forest (_inst_show_tree ((assert false)[@HOLE]))) xs *)
-
-(* type hogemoge = Hoge | Moge | Fuga [@@deriving enum]
+type hogemoge = Hoge | Moge | Fuga [@@deriving enum,fillup]
 let _of_enum[@instance] = {of_enum=(fun x -> hogemoge_of_enum x)}
 
 let () = 
@@ -55,8 +35,20 @@ let () =
   | Some Hoge -> print_endline "Hoge" 
   | Some Moge -> print_endline "Moge" 
   | Some Fuga -> print_endline "Fuga"
-  | _ -> print_endline "None" *)
- 
+  | _ -> print_endline "None"
+
+type 'a tree = Node of 'a tree * 'a tree | Leaf of 'a [@@deriving show,iter,map,fold,fillup]
+
+
+
+let () =
+  let x = (Node (Leaf 1, Leaf 2)) in
+  iter_tree (Printf.printf "%d ") x; print_endline "";
+  (* iter ## (Printf.printf "%d ") x; print_endline ""; *)
+  print_endline @@ show ## (map_tree ((+) 1) x);
+  print_endline @@ show ## (fold_tree (+) 0 x);;
+  ()
+
 (*
   subtyping の説明
   [`A] <: [`A | `B]
