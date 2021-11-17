@@ -40,50 +40,65 @@ let is_instance (desc : Types.value_description) =
   List.exists (fun attr -> attr.attr_name.txt="instance") desc.val_attributes 
 
 let resolve_instances ty env =
-  let rec find_instances lvl = function
-  | Env.Env_empty -> []
-  | Env_extension (s, _, _)
-  | Env_modtype (s, _, _)
-  | Env_class (s, _, _)
-  | Env_cltype (s, _, _)
-  | Env_functor_arg (s, _)
-  | Env_type (s, _, _)
-  | Env_constraints (s, _) 
-  | Env_module (s, _, _, _) 
-  | Env_copy_types s
-  | Env_persistent (s, _)
-  | Env_value_unbound (s, _, _)
-  | Env_module_unbound (s, _, _) -> 
-    find_instances lvl s
-  | Env_value (s, ident, desc) ->
-    if is_instance desc then
-      begin match match_instance env ty ident desc.val_type with
-      | Some i -> i :: find_instances lvl s
-      | None -> find_instances lvl s
-      end
-    else find_instances lvl s
-  | Env_open (s, path) ->
-    let str_items mdecl =
-      match mdecl.Types.md_type with
-      | Mty_signature sg -> sg
-      | Mty_functor _ -> [] 
-      | _ -> assert false
-    in
-    let lvl = lvl + 1 in
-    let rest = find_instances lvl s in
-    let md = Env.find_module path env in
-    List.fold_left (fun res -> function
-      | Types.Sig_value (ident, desc, _) ->
-        if is_instance desc then
-          begin match match_instance env ty ident desc.val_type with
-          | Some i -> i :: res
-          | _ -> res
-          end
-        else find_instances lvl s
-      | _ -> res)
-        rest (str_items md)
-  in
-  find_instances 0 (Env.summary env)
+  let instances = ref [] in 
+  (* let first_search_flg = ref true in  *)
+  match !instances with
+  | [] -> 
+    let rec find_instances lvl = function
+    | Env.Env_empty -> []
+    | Env_extension (s, _, _)
+    | Env_modtype (s, _, _)
+    | Env_class (s, _, _)
+    | Env_cltype (s, _, _)
+    | Env_functor_arg (s, _)
+    | Env_type (s, _, _)
+    | Env_constraints (s, _) 
+    | Env_module (s, _, _, _) 
+    | Env_copy_types s
+    | Env_persistent (s, _)
+    | Env_value_unbound (s, _, _)
+    | Env_module_unbound (s, _, _) -> 
+      find_instances lvl s
+    | Env_value (s, ident, desc) ->
+      if is_instance desc then
+        begin
+          instances := (ident,desc)::!instances;
+          match match_instance env ty ident desc.val_type with
+          | Some i -> i :: find_instances lvl s
+          | None -> find_instances lvl s
+        end
+      else find_instances lvl s
+    | Env_open (s, path) ->
+      let str_items mdecl =
+        match mdecl.Types.md_type with
+        | Mty_signature sg -> sg
+        | Mty_functor _ -> [] 
+        | _ -> assert false
+      in
+      let lvl = lvl + 1 in
+      let rest = find_instances lvl s in
+      let md = Env.find_module path env in
+      List.fold_left (fun res -> function
+        | Types.Sig_value (ident, desc, _) ->
+          if is_instance desc then
+            begin    
+              instances := (ident,desc)::!instances;
+              match match_instance env ty ident desc.val_type with
+              | Some i -> i :: res
+              | _ -> res
+            end
+          else find_instances lvl s
+        | _ -> res)
+          rest (str_items md)
+    in 
+    find_instances 0 (Env.summary env)
+  | _::_ as instances -> 
+    List.concat @@ 
+    List.map (fun (ident,(desc:Types.value_description)) -> 
+      match match_instance env ty ident desc.val_type with
+    | Some i -> [i]
+    | None -> []) instances
+  (* if !first_search_flg then find_instances 0 (Env.summary env) else  *)
 
 let lookup_hole self (super:Untypeast.mapper) attr (texp:Typedtree.expression) = 
   match attr with
@@ -115,6 +130,9 @@ let rec loop_typer_untyper str =
     let out = open_out "/tmp/foo.ml" in
     output_string out (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
     close_out out;
+    (* let out = open_out "/tmp/foo.txt" in
+    List.iter (fun ident -> output_string out @@ (Ident.name ident)^"\n" ) !instances;
+    close_out out; *)
     untypstr
   else
     loop_typer_untyper untypstr
