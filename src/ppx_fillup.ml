@@ -17,18 +17,21 @@ let rec apply_holes n exp =
 
 let evar ident = Ast_helper.Exp.ident (Location.mknoloc (Longident.Lident (Ident.name ident)))
 
-type instance = Poly of int * Ident.t | Nonpoly of Ident.t
+type instance_polymorphism = Poly of int * Ident.t | Nonpoly of Ident.t
 
-let rec make_instance env ty ident instty =
+let rec match_instance env holety ident instty =
   match (Ctype.repr @@ Ctype.expand_head env instty).desc with
   | Tarrow (_,_,ret,_) -> 
-    begin  match make_instance env ty ident ret with
-    | Some (Nonpoly ident) -> Some (Poly (1,ident))
-    | Some (Poly (n,ident)) -> Some (Poly (n+1,ident))
-    | None -> None
+    if Ctype.matches env holety instty then
+      Some (Nonpoly ident)
+    else
+      begin match match_instance env holety ident ret with
+      | Some (Nonpoly ident) -> Some (Poly (1,ident))
+      | Some (Poly (n,ident)) -> Some (Poly (n+1,ident))
+      | None -> None
     end
   | _ -> 
-    if Ctype.matches env ty instty then
+    if Ctype.matches env holety instty then
       Some (Nonpoly ident)
     else  
       None
@@ -54,7 +57,7 @@ let resolve_instances ty env =
     find_instances lvl s
   | Env_value (s, ident, desc) ->
     if is_instance desc then
-      begin match make_instance env ty ident desc.val_type with
+      begin match match_instance env ty ident desc.val_type with
       | Some i -> i :: find_instances lvl s
       | None -> find_instances lvl s
       end
@@ -71,14 +74,14 @@ let resolve_instances ty env =
     let md = Env.find_module path env in
     List.fold_left (fun res -> function
       | Types.Sig_value (ident, desc, _) ->
-        if is_instance desc  then
-          begin match make_instance env ty ident desc.val_type with
+        if is_instance desc then
+          begin match match_instance env ty ident desc.val_type with
           | Some i -> i :: res
           | _ -> res
           end
         else find_instances lvl s
       | _ -> res)
-      rest (str_items md)
+        rest (str_items md)
   in
   find_instances 0 (Env.summary env)
 
@@ -103,7 +106,7 @@ let untyper =
       | _ -> super.expr self texp
   }
 
-let rec loop str =
+let rec loop_typer_untyper str =
   Compmisc.init_path (); 
   let env = Compmisc.initial_env () in
   let (tstr, _, _, _) = Typemod.type_structure env str in
@@ -114,7 +117,7 @@ let rec loop str =
     close_out out;
     untypstr
   else
-    loop untypstr
+    loop_typer_untyper untypstr
 
 class replace_hashhash = object (this)
   inherit Ppxlib.Ast_traverse.map as super
@@ -130,7 +133,7 @@ end
 
 let transform str =
   let str = (new replace_hashhash)#structure str in
-  loop str
+  loop_typer_untyper str
 
 let () =
   Ppxlib.Driver.register_transformation
