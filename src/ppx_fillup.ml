@@ -39,11 +39,12 @@ let rec match_instance env holety ident instty =
 let is_instance (desc : Types.value_description) = 
   List.exists (fun attr -> attr.attr_name.txt="instance") desc.val_attributes 
 
-let resolve_instances ty env =
-  let instances = ref [] in 
-  (* let first_search_flg = ref true in  *)
-  match !instances with
-  | [] -> 
+let flg_make_instances = ref true
+
+let resolve_instances =
+  let instances = ref [] in
+  fun ty env ->
+  if !flg_make_instances then 
     let rec find_instances lvl = function
     | Env.Env_empty -> []
     | Env_extension (s, _, _)
@@ -92,13 +93,18 @@ let resolve_instances ty env =
           rest (str_items md)
     in 
     find_instances 0 (Env.summary env)
-  | _::_ as instances -> 
-    List.concat @@ 
-    List.map (fun (ident,(desc:Types.value_description)) -> 
-      match match_instance env ty ident desc.val_type with
-    | Some i -> [i]
-    | None -> []) instances
-  (* if !first_search_flg then find_instances 0 (Env.summary env) else  *)
+  else
+    let rec find_instances (instances:(Ident.t * Types.value_description) list)=
+      match instances with
+      | (ident,desc)::rest ->
+        (* prerr_endline (Ident.name ident); *)
+        begin match match_instance env ty ident desc.val_type with
+        | Some i -> i::find_instances rest
+        | None -> find_instances rest
+        end
+      | [] -> []
+    in
+    find_instances !instances
 
 let lookup_hole self (super:Untypeast.mapper) attr (texp:Typedtree.expression) = 
   match attr with
@@ -126,12 +132,13 @@ let rec loop_typer_untyper str =
   let env = Compmisc.initial_env () in
   let (tstr, _, _, _) = Typemod.type_structure env str in
   let untypstr = untyper.structure untyper tstr in
+  flg_make_instances := false;
   if str=untypstr then
     let out = open_out "/tmp/foo.ml" in
     output_string out (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
     close_out out;
     (* let out = open_out "/tmp/foo.txt" in
-    List.iter (fun ident -> output_string out @@ (Ident.name ident)^"\n" ) !instances;
+    List.iter (fun (ident,_) -> output_string out @@ (Ident.name ident)^"\n";) !instances;
     close_out out; *)
     untypstr
   else
