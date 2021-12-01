@@ -19,18 +19,20 @@ let evar ident = Ast_helper.Exp.ident (Location.mknoloc (Longident.Lident (Ident
 
 type instance_polymorphism = Poly of int * Ident.t | Nonpoly of Ident.t
 
-let rec match_instance env holety ident instty =
-  match (Ctype.repr @@ Ctype.expand_head env instty).desc with
+let rec get_instance env holety ident instty =
+  let instty = Ctype.repr @@ Ctype.expand_head env instty in
+  match instty.desc with
   | Tarrow (_,_,ret,_) -> 
     if Ctype.matches env holety instty then
       Some (Nonpoly ident)
     else
-      begin match match_instance env holety ident ret with
+      begin match get_instance env holety ident ret with
       | Some (Nonpoly ident) -> Some (Poly (1,ident))
       | Some (Poly (n,ident)) -> Some (Poly (n+1,ident))
       | None -> None
     end
   | _ -> 
+    (* prerr_endline "other"; *)
     if Ctype.matches env holety instty then
       Some (Nonpoly ident)
     else  
@@ -45,7 +47,8 @@ let resolve_instances ty env =
   let rec find_instances (instances:(Ident.t * Types.value_description) list)=
     match instances with
     | (ident,desc)::rest ->
-      begin match match_instance env ty ident desc.val_type with
+      begin 
+        match get_instance env ty ident desc.val_type with
       | Some i -> i::find_instances rest
       | None -> find_instances rest
       end
@@ -56,10 +59,11 @@ let resolve_instances ty env =
 let lookup_hole self (super:Untypeast.mapper) attr (texp:Typedtree.expression) = 
   match attr with
   | {Parsetree.attr_name={txt="HOLE"; _}; attr_loc=loc; _} ->
-    begin match resolve_instances texp.exp_type texp.exp_env with
+    begin 
+      match resolve_instances texp.exp_type texp.exp_env with
     | Nonpoly ident::_ -> evar ident 
     | Poly (n,ident)::_ -> [%expr [%e apply_holes n @@ evar ident]]
-    | _ ->
+    | [] ->
       Location.raise_errorf ~loc "Instance not found:%a" Printtyp.type_expr texp.exp_type
     end
   | _ -> super.expr self texp
@@ -80,9 +84,9 @@ let rec loop_typer_untyper str =
   let (tstr, _, _, _) = Typemod.type_structure env str in
   let untypstr = untyper.structure untyper tstr in
   if str=untypstr then
-    let out = open_out "/tmp/foo.ml" in
+    (* let out = open_out "/tmp/foo.ml" in
     output_string out (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
-    close_out out;
+    close_out out; *)
     untypstr
   else
     loop_typer_untyper untypstr
@@ -148,7 +152,7 @@ let transform str =
   let str = (new replace_hashhash)#structure str in
   make_instances str;
   let out = open_out "/tmp/foo.txt" in
-  List.iter (fun (ident,_) -> output_string out ((Ident.name ident)^"\n")) !instances;
+  List.iter (fun (ident,(_desc:Types.value_description)) -> output_string out ((Ident.name ident)^"\n")) !instances;
   close_out out;
   loop_typer_untyper str
 

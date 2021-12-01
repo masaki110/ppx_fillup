@@ -1,5 +1,5 @@
 (library
- (name ppx_fillup_deriver)
+ (name deriver)
  (public_name ppx_fillup.deriver)
  (kind ppx_deriver)
  (libraries ppxlib ppx_deriving.api)

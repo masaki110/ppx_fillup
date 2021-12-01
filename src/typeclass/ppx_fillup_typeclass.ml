@@ -2,12 +2,11 @@
 type 'a pp = {pp:Format.formatter -> 'a -> unit}[@@typeclass]
 let show (dict:'a pp) v = Format.asprintf "%a" dict.pp v
 (* let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)} *)
-(* let _inst_pp_string[@instance] = {pp=Format.pp_print_string}
+let _inst_pp_string[@instance] = {pp=Format.pp_print_string}
 let _inst_pp_int[@instance] = {pp=Format.pp_print_int}
 let _inst_pp_float[@instance] = {pp=Format.pp_print_float}
 let _inst_pp_char[@instance] = {pp=Format.pp_print_char}
 let _inst_pp_bool[@instance] = {pp=Format.pp_print_bool}
-let _inst_pp_bool[@instance] = {pp=Format.pp_print_bool} *)
 
 (* Plugin : eq *)
 type 'a equal = {equal:'a -> 'a -> bool}[@@typeclass]

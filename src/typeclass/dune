@@ -1,4 +1,4 @@
 (library
- (name ppx_fillup_plugin)
- (public_name ppx_fillup.plugin)
+ (name ppx_fillup_typeclass)
+ (public_name ppx_fillup.typeclass)
 )
