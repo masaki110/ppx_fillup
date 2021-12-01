@@ -1,4 +1,3 @@
 (library
  (name ppx_fillup_typeclass)
- (public_name ppx_fillup.typeclass)
-)
+ (public_name ppx_fillup.typeclass))
