@@ -5,14 +5,19 @@
 
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_typeclass
+open Ppx_fillup_instances
 
-let (_inst_pp_string [@instance]) = { pp = Format.pp_print_string }
+(* memo : 
+ * typeclassと一緒にインスタンスを入れるとfillupしてくれないが、別のファイルに入れておくとfillupできる
+*)
 
-let (_inst_pp_int [@instance]) = { pp = Format.pp_print_int }
+(* let (_inst_pp_string [@instance]) = { pp = Format.pp_print_string } *)
+
+(* let (_inst_pp_int [@instance]) = { pp = Format.pp_print_int } *)
 
 (* let _inst_pp_float[@instance] = {pp=Format.pp_print_float} *)
 (* let _inst_pp_char[@instance] = {pp=Format.pp_print_char} *)
-let (_inst_pp_bool [@instance]) = { pp = Format.pp_print_bool }
+(* let (_inst_pp_bool [@instance]) = { pp = Format.pp_print_bool } *)
 
 (* to do
    1. derivingを利用しているopamプロジェクトを探す
@@ -22,15 +27,15 @@ let (_inst_pp_bool [@instance]) = { pp = Format.pp_print_bool }
 *)
 let () = print_endline @@ (show ## "a")
 
-type foobar = { foo : int; bar : string } [@@deriving show, eq, ord, fillup]
+(* type foobar = { foo : int; bar : string } [@@deriving show, eq, ord, fillup]
 
-let () =
-  let x = { foo = 1; bar = "abc" } in
-  let y = { foo = 2; bar = "def" } in
-  print_endline @@ show##x;
-  print_endline @@ (show ## (equal##x y));
-  print_endline @@ (show ## (compare##x y));
-  ()
+   let () =
+     let x = { foo = 1; bar = "abc" } in
+     let y = { foo = 2; bar = "def" } in
+     print_endline @@ show##x;
+     print_endline @@ (show ## (equal##x y));
+     print_endline @@ (show ## (compare##x y));
+     () *)
 (*
    type hogemoge = Hoge | Moge | Fuga [@@deriving enum,fillup]
    let () =

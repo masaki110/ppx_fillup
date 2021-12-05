@@ -1,0 +1,4 @@
+(library
+ (name ppx_fillup_instances)
+ (public_name ppx_fillup.instances)
+ (libraries ppx_fillup.typeclass))

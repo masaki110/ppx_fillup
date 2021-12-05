@@ -20,13 +20,13 @@ let evar ident =
 
 type instance_polymorphism = Poly of int * Ident.t | Nonpoly of Ident.t
 
-let rec get_instance env holety ident instty =
+let rec match_instance env holety ident instty =
   let instty = Ctype.repr @@ Ctype.expand_head env instty in
   match instty.desc with
   | Tarrow (_, _, ret, _) -> (
       if Ctype.matches env holety instty then Some (Nonpoly ident)
       else
-        match get_instance env holety ident ret with
+        match match_instance env holety ident ret with
         | Some (Nonpoly ident) -> Some (Poly (1, ident))
         | Some (Poly (n, ident)) -> Some (Poly (n + 1, ident))
         | None -> None)
@@ -44,7 +44,7 @@ let resolve_instances ty env =
       =
     match instances with
     | (ident, desc) :: rest -> (
-        match get_instance env ty ident desc.val_type with
+        match match_instance env ty ident desc.val_type with
         | Some i -> i :: find_instances rest
         | None -> find_instances rest)
     | [] -> []
