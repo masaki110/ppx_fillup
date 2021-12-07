@@ -18,7 +18,7 @@ type foobar = { foo : int; bar : string } [@@deriving show, eq, ord, fillup]
 let () =
   let x = { foo = 1; bar = "abc" } in
   let y = { foo = 2; bar = "def" } in
-  print_endline @@ show##x;
+  print_endline @@ show ## x;
   print_endline @@ (show ## (equal##x y));
   print_endline @@ (show ## (equal##x y));
   print_endline @@ (show ## (compare##x y));
