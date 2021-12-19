@@ -33,5 +33,4 @@ _opam/
 .DS_store
 *.trace
 *.sh
-src/instance/*
 .ocamlformat

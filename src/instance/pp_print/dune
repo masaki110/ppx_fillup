@@ -1,4 +1,4 @@
 (library
- (name ppx_fillup_instances)
- (public_name ppx_fillup.instances)
+ (name ppx_fillup_pp_print)
+ (public_name ppx_fillup.pp_print)
  (libraries ppx_fillup.typeclass))
