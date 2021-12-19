@@ -51,8 +51,8 @@ let resolve_instances ty env =
   in
   find_instances !instances
 
-let lookup_hole self (super : Untypeast.mapper) attr
-    (texp : Typedtree.expression) =
+let lookup_hole self (super : Untypeast.mapper) (texp : Typedtree.expression)
+    attr =
   match attr with
   | { Parsetree.attr_name = { txt = "HOLE"; _ }; attr_loc = loc; _ } -> (
       match resolve_instances texp.exp_type texp.exp_env with
@@ -70,9 +70,17 @@ let untyper =
     expr =
       (fun self (texp : Typedtree.expression) ->
         match (texp.exp_attributes, texp.exp_extra) with
-        | attr :: _, _ -> lookup_hole self super attr texp
-        | _, (_, _, attr :: _) :: _ -> lookup_hole super self attr texp
+        | attr :: _, _ -> lookup_hole self super texp attr
+        | _, (_, _, attr :: _) :: _ -> lookup_hole super self texp attr
+        (* | _, _, -> *)
         | _ -> super.expr self texp);
+    (* module_type =
+      (fun self (tmty : Typedtree.module_type) ->
+        match tmty.mty_desc with
+        (* |  -> super.module_type self tmty *)
+        | _ ->
+            prerr_endline "here";
+            super.module_type self tmty); *)
   }
 
 let rec loop_typer_untyper str =
@@ -150,21 +158,48 @@ class replace_hashhash =
           Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
             (this#expression arg1)
             [ (Nolabel, make_hole loc); (Nolabel, this#expression arg2) ]
+      (* | Pexp_apply
+          ( {
+              pexp_desc = Pexp_ident { txt = Lident "##"; _ };
+              pexp_loc = loc_hole;
+              _;
+            },
+            [ (_, arg1) ] ) ->
+          let loc = loc_hole in
+          Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
+            (this#expression arg1)
+            [ (Nolabel, make_hole loc) ] *)
       | _ -> super#expression exp
   end
 
 let transform str =
   let str = (new replace_hashhash)#structure str in
   make_instances str;
+  (* print start *)
   let out = open_out "/tmp/foo.txt" in
   List.iter
     (fun (ident, (_desc : Types.value_description)) ->
+      (* match desc.val_type.desc with
+      | Tvar a -> output_string out (Ident.name ident ^ " " ^ (Option.get a) ^ "\n")
+      | _ -> output_string out (Ident.name ident ^ "\n") *)
       output_string out (Ident.name ident ^ "\n"))
     !instances;
   close_out out;
+  (* print end *)
   loop_typer_untyper str
+
+(* let expand ~loc ~path:_ = make_hole loc *)
+
+(* Declaration of extension [%HOLE] : https://tarides.com/blog/2019-05-09-an-introduction-to-ocaml-ppx-ecosystem *)
+let hole =
+  Ppxlib.Extension.declare
+    "HOLE"
+    Ppxlib.Extension.Context.expression
+    Ppxlib.Ast_pattern.(pstr nil)
+    (fun ~loc ~path:_ -> make_hole loc)
 
 let () =
   Ppxlib.Driver.register_transformation
+    ~extensions:[hole]
     ~instrument:(Ppxlib.Driver.Instrument.make ~position:After transform)
     "ppx_fillup"

@@ -5,19 +5,11 @@
 
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_typeclass
-open Ppx_fillup_instances
+open Ppx_fillup_pp_print
 
 (* memo : 
  * typeclassと一緒にインスタンスを入れるとfillupしてくれないが、別のファイルに入れておくとfillupできる
-*)
-
-(* let (_inst_pp_string [@instance]) = { pp = Format.pp_print_string } *)
-
-(* let (_inst_pp_int [@instance]) = { pp = Format.pp_print_int } *)
-
-(* let _inst_pp_float[@instance] = {pp=Format.pp_print_float} *)
-(* let _inst_pp_char[@instance] = {pp=Format.pp_print_char} *)
-(* let (_inst_pp_bool [@instance]) = { pp = Format.pp_print_bool } *)
+ *)
 
 (* to do
    1. derivingを利用しているopamプロジェクトを探す
@@ -25,7 +17,49 @@ open Ppx_fillup_instances
      e.g. print_endline @@ show_foobar x; -->  print_endline @@ show_foobar x;
    3. ベンチマーク
 *)
-let () = print_endline @@ (show ## "a")
+
+
+(* Plugin : show *)
+type 'a g = { g : 'a -> string } [@@typeclass]
+let f (dict : 'a g) x = dict.g x ^ "success"
+let _inst_g [@instance] = {g=fun x -> x ^ " "};;
+print_endline (f [%HOLE] "Overload") 
+
+(* ppx_deriving *)
+
+type foobar2 = { foo : int; bar : string } [@@deriving show]
+type foobar3 = Foo | Bar [@@deriving enum];;
+
+(* オーバーロード : show 関数 *)
+show_foobar2 {foo=1;bar="ito"};;
+
+show ## "abc";;
+
+(* print_endline @@ (show ## (1,3)) *)
+
+(* オーバーロード : ppx_deriving plugin *)
+type foobar = { foo : int; bar : string } [@@deriving show, fillup]
+
+type buz = { qux : bool } [@@deriving show, fillup];;
+
+show ## { foo = 1; bar = "abc" };;
+
+show ## { qux = true }
+
+(* オーバーロード : equal instance *)
+(* let _inst_equal[@instance] = Int.equal;;
+   print_endline (show ## (Base.List.mem ## [1;2;3] 1));; *)
+
+(* first class module *)
+open Base
+
+(* let _inst_mod_int[@instance] = (module Base__.Int);; *)
+(* let s = Set.empty ((assert false  : 'a)[@HOlE]);;
+   let s = Set.union s (Set.singleton ((assert false : 'a)[@HOlE]) 1);; *)
+
+let s = Set.empty (module Int)
+
+let s = Set.union s (Set.singleton (module Int) 1)
 
 (* type foobar = { foo : int; bar : string } [@@deriving show, eq, ord, fillup]
 
