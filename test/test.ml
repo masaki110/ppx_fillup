@@ -3,9 +3,66 @@
 
 [@@@warnerror "-26"]
 
+(* open Ppx_fillup_typeclass
+(* open Ppx_fillup_pp_print *)
+
+let show ~dict x = Format.asprintf "%a\n" dict.pp x
+let inst_int[@instance] = {pp=Format.pp_print_int}
+
+let () = print_endline (show ~dict:[%HOLE] 1) *)
+
+(* 
+let show ~dict x = Format.asprintf "%a\n" dict.pp x
+
+let () = print_endline (show ~dict:[%HOLE] "a")
+;;
+
+let inst_int[@instance] = { equal = Int.equal}
+
+let mem xs x ~equal  = Base.List.mem xs x ~equal:equal.equal
+let () = print_endline @@ string_of_bool (mem [1;2;3] 1 ~equal:[%HOLE]) *)
+
+(* let show ?dict:(dict=_inst_pp_int) x = Format.asprintf "%a\n" dict.pp x
+
+let () = print_endline (show ~dict:[%HOLE] "a") *)
+
+(* print_endline @@ show ## 1;; *)
+
+(*
+   (* undicidale instances *)
+   (* data A x = A deriving (Show)
+   class C y where get :: y
+   instance (C (A (A a))) => C (A a) where get = A
+   main = print (get :: A ()) *)
+
+   type 'a a = A of 'a
+   type 'a c = { get : 'a }[@@typeclass]
+   let (c1 [@instance]) = (fun (_ : (('a a) a) c) -> { get = A (assert false) })
+
+   let foo (_:unit a c) = ();;
+   (* foo [%HOLE] *)
+   (* foo ## () *)
+*)
+
+type 'a print = { print : 'a -> unit} [@@typeclass]
+
+(* instance Show a => Show [a] *)
+let (inst_list [@instance]) : 'a print -> 'a list print = fun inner -> { print = List.iter inner.print}
+(* instance Show [Int] *)
+let (_inst_int_list [@instance]) : int list print = { print = List.iter print_int } 
+(* instance Show Int *)
+let (inst_int [@instance]) : int print = { print = Format.printf "%d\n" }
+
+let print dict x = dict.print x
+let () = print [%HOLE] [1;2;3]
+
+(* let print ?(dict=inst_int) x = dict.print x
+   let () = print ~dict:[%HOLE] [1;2;3] *)
+
+(* 
 (* 案1:deriving pluginに対応するものを手書きで作っておく --> とりあえず採用 *)
 open Ppx_fillup_typeclass
-open Ppx_fillup_pp_print
+open Ppx_fillup_pp_print;;
 
 (* memo : 
  * typeclassと一緒にインスタンスを入れるとfillupしてくれないが、別のファイルに入れておくとfillupできる
@@ -18,33 +75,19 @@ open Ppx_fillup_pp_print
    3. ベンチマーク
 *)
 
+(* show関数 *)
+print_endline @@ show [%HOLE] 1;;
 
-(* Plugin : show *)
-type 'a g = { g : 'a -> string } [@@typeclass]
-let f (dict : 'a g) x = dict.g x ^ "success"
-let _inst_g [@instance] = {g=fun x -> x ^ " "};;
-print_endline (f [%HOLE] "Overload") 
-
-(* ppx_deriving *)
-
-type foobar2 = { foo : int; bar : string } [@@deriving show]
-type foobar3 = Foo | Bar [@@deriving enum];;
-
-(* オーバーロード : show 関数 *)
-show_foobar2 {foo=1;bar="ito"};;
-
-show ## "abc";;
-
-(* print_endline @@ (show ## (1,3)) *)
+print_endline @@ show [%HOLE] "a"
 
 (* オーバーロード : ppx_deriving plugin *)
-type foobar = { foo : int; bar : string } [@@deriving show, fillup]
+type student = { id : int; name : string } [@@deriving show, fillup]
 
 type buz = { qux : bool } [@@deriving show, fillup];;
 
-show ## { foo = 1; bar = "abc" };;
+print_endline @@ show [%HOLE] { id = 1; name = "abc" };;
 
-show ## { qux = true }
+print_endline @@ (show ## { qux = true })
 
 (* オーバーロード : equal instance *)
 (* let _inst_equal[@instance] = Int.equal;;
@@ -59,7 +102,7 @@ open Base
 
 let s = Set.empty (module Int)
 
-let s = Set.union s (Set.singleton (module Int) 1)
+let s = Set.union s (Set.singleton (module Int) 1) *)
 
 (* type foobar = { foo : int; bar : string } [@@deriving show, eq, ord, fillup]
 

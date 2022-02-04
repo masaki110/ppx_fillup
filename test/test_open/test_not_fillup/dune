@@ -1,0 +1,7 @@
+(executable
+ (name test)
+ (libraries base)
+ (preprocess
+  (pps ppx_deriving.std))
+ ;(preprocess (pps ppx_deriving.std ppx_fillup.deriver))
+ )
