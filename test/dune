@@ -1,7 +1,7 @@
 (executable
  (name test)
- (libraries ppx_fillup.typeclass ppx_fillup.pp_print base)
+ (libraries ppx_fillup.deriving.typeclass ppx_fillup.pp_print base)
  (preprocess
-  (staged_pps ppx_deriving.std ppx_fillup ppx_fillup.deriver))
+  (staged_pps ppx_deriving.std ppx_fillup ppx_fillup.deriving))
  ;(preprocess (pps ppx_deriving.std ppx_fillup.deriver))
  )

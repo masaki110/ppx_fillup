@@ -1,0 +1,3 @@
+(library
+ (name typeclass)
+ (public_name ppx_fillup.deriving.typeclass))

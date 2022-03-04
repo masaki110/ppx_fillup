@@ -1,6 +1,6 @@
 (library
- (name deriver)
- (public_name ppx_fillup.deriver)
+ (name deriving)
+ (public_name ppx_fillup.deriving)
  (kind ppx_deriver)
  (libraries ppxlib ppx_deriving.api)
  (preprocess

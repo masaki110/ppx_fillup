@@ -1,5 +1,0 @@
-(executable
- (name test)
- (libraries ppx_fillup.typeclass)
- (preprocess
-  (staged_pps ppx_fillup)))

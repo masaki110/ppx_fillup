@@ -1,4 +1,6 @@
-open Ppx_fillup_typeclass
+type 'a showable = { pp : Format.formatter -> 'a -> unit }
+
+let show (dict : 'a showable) v = Format.asprintf "%a\n" dict.pp v
 
 let (_inst_pp_string [@instance]) = { pp = Format.pp_print_string }
 
