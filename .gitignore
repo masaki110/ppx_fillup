@@ -34,3 +34,5 @@ _opam/
 *.trace
 *.sh
 .ocamlformat
+memo*
+test/test_*
