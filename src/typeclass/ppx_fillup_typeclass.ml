@@ -2,7 +2,7 @@
 (* Plugin : show *)
 type 'a pp = { pp : Format.formatter -> 'a -> unit } [@@typeclass]
 
-let show (dict : 'a pp) v = Format.printf "%a\n" dict.pp v
+let show (dict : 'a pp) v = Format.asprintf "%a\n" dict.pp v
 
 (* let _inst_show_tree[@instance] = fun (inner:'a pp) -> {pp=(fun x -> pp_tree inner.pp x)} *)
 
@@ -41,4 +41,5 @@ let of_enum (dict : 'a of_enum) v = dict.of_enum v
 
 (* Plugin : make *)
 
-(* Base.List equal ******************************)
+(* Print *)
+let print (dict: 'a pp) v = Format.printf "%a\n" dict.pp v

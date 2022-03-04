@@ -156,15 +156,12 @@ let make_instances str =
 class replace_hashhash =
   object (this)
     inherit Ppxlib.Ast_traverse.map as super
-
     method! expression exp =
       match exp.pexp_desc with
       | Pexp_apply
-          ( {
-              pexp_desc = Pexp_ident { txt = Lident "##"; _ };
+          ( { pexp_desc = Pexp_ident { txt = Lident "##"; _ };
               pexp_loc = loc_hole;
-              _;
-            },
+              _; },
             [ (_, arg1); (_, arg2) ] ) ->
           let loc = loc_hole in
           Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
