@@ -32,7 +32,7 @@ let apply_inner loc type_decl inner =
 
 let pat_of_string loc type_decl affix =
   Pat.var ~attrs:[ Attr.mk (mknoloc "instance") (PStr [ Str.eval [%expr ()] ]) ]
-  @@ mknoloc @@ "_inst_"
+  @@ mknoloc @@ "inst_"
   ^ Ppx_deriving.mangle_type_decl affix type_decl
 
 (* generate instance : e.g. let _inst_show_foobar[@instance] = {show=(fun x -> show_foobar x)} *)

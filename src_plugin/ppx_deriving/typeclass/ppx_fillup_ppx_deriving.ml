@@ -1,8 +1,8 @@
 (* ppx_deriving plugin *********************************************************)
 (* Plugin : show *)
-(* type 'a pp = { pp : Format.formatter -> 'a -> unit }
+type 'a pp = { pp : Format.formatter -> 'a -> unit }
 
-let show (dict : 'a pp) v = Format.asprintf "%a\n" dict.pp v *)
+let show (dict : 'a pp) v = Format.asprintf "%a\n" dict.pp v
 
 (* Plugin : eq *)
 type 'a equal = { equal : 'a -> 'a -> bool }

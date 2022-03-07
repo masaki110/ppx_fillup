@@ -1,0 +1,3 @@
+(library
+ (name ppx_fillup_ppx_deriving)
+ (public_name ppx_fillup.ppx_deriving))
