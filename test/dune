@@ -1,4 +1,4 @@
-(executable
+(test
  (name test)
  (libraries ounit2 ppx_fillup.ppx_deriving)
  (preprocess
