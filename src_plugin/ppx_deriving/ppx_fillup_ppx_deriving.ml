@@ -7,9 +7,7 @@ open Parsetree
 open Ast_helper
 
 let mknoloc = Location.mknoloc
-
 let evar name = Exp.ident @@ mknoloc (Ppxlib.Longident.Lident name)
-
 let pvar name = Pat.var @@ mknoloc name
 
 let expr_of_string type_decl affix =
@@ -32,7 +30,8 @@ let apply_inner loc type_decl inner =
 
 let pat_of_string loc type_decl affix =
   Pat.var ~attrs:[ Attr.mk (mknoloc "instance") (PStr [ Str.eval [%expr ()] ]) ]
-  @@ mknoloc @@ "inst_"
+  @@ mknoloc
+  @@ "inst_"
   ^ Ppx_deriving.mangle_type_decl affix type_decl
 
 (* generate instance : e.g. let _inst_show_foobar[@instance] = {show=(fun x -> show_foobar x)} *)
