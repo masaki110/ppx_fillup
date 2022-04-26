@@ -1,6 +1,6 @@
 (executable
  (name test)
- (libraries ppx_fillup.ppx_deriving)
+ (libraries ounit2 ppx_fillup.ppx_deriving)
  (preprocess
   (staged_pps ppx_deriving.std ppx_fillup ppx_fillup.ppx_deriving_deriver))
  ;(preprocess (pps ppx_deriving.std ppx_fillup.deriver))

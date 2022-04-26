@@ -138,7 +138,7 @@ let rec loop_typer_untyper str =
   let tstr, _, _, _ = Typemod.type_structure env str in
   let untypstr = untyper.structure untyper tstr in
   if str = untypstr then (
-    let out = open_out "/tmp/foo.ml" in
+    let out = open_out "/tmp/fillup_out.ml" in
     output_string out
       (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
     close_out out;
@@ -170,12 +170,12 @@ let transform str =
   loop_typer_untyper str
 
 (* Declaration of extension [%HOLE] : https://tarides.com/blog/2019-05-09-an-introduction-to-ocaml-ppx-ecosystem *)
-let hole_extension =
-  Ppxlib.Extension.declare "HOLE" Ppxlib.Extension.Context.expression
+let extension s =
+  Ppxlib.Extension.declare s Ppxlib.Extension.Context.expression
     Ppxlib.Ast_pattern.(pstr nil)
     (fun ~loc ~path:_ -> make_hole loc)
 
 let () =
-  Ppxlib.Driver.register_transformation ~extensions:[ hole_extension ]
+  Ppxlib.Driver.register_transformation ~extensions:[ extension "HOLE" ]
     ~instrument:(Ppxlib.Driver.Instrument.make ~position:After transform)
     "ppx_fillup"
