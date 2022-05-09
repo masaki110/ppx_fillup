@@ -2,6 +2,6 @@
  (name ppx_fillup)
  (public_name ppx_fillup)
  (kind ppx_rewriter)
- (libraries ppxlib ppx_deriving.api)
+ (libraries ppxlib ppx_deriving.api stdlib)
  (preprocess
   (pps ppxlib.metaquot)))
