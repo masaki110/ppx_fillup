@@ -128,7 +128,6 @@ let untyper =
         match (texp.exp_attributes, texp.exp_extra) with
         | attr :: _, _ -> fillup_hole self super attr texp
         | _, (_, _, attr :: _) :: _ -> fillup_hole super self attr texp
-        (* | _, _, -> *)
         | _ -> super.expr self texp);
   }
 
