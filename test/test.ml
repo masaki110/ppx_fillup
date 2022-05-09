@@ -25,12 +25,19 @@ let test_show_list _ =
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ];
   assert_equal "abc, def, ghi" show ## [ "abc"; "def"; "ghi" ]
 
+let float_int[@instance] = float_of_int 
+  
+let average : int list -> float =
+  fun xs ->
+    let sum, count =
+    xs |> List.fold_left (fun (sum, count) x -> (sum + x, succ count)) (0, 0)
+  in
+  [%HOLE] sum /. [%HOLE] count
+
 (* deriving show *)
 open Ppx_fillup_ppx_deriving
 
 type student = { id : int; name : string } [@@deriving show, eq, ord, fillup]
-
-let (show_bool [@instance]) = string_of_bool
 
 let tests =
   "Test fillup"
