@@ -33,6 +33,5 @@ _opam/
 .DS_store
 *.trace
 *.sh
-.ocamlformat
 memo*
 test_tmp
