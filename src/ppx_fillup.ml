@@ -176,6 +176,7 @@ let extension s =
     (fun ~loc ~path:_ -> make_hole loc)
 
 let () =
-  Ppxlib.Driver.register_transformation ~extensions:[ extension "HOLE" ]
+  Ppxlib.Driver.register_transformation
+    ~extensions:[ extension "HOLE" ]
     ~instrument:(Ppxlib.Driver.Instrument.make ~position:After transform)
     "ppx_fillup"
