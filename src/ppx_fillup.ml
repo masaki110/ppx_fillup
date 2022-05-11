@@ -9,7 +9,7 @@ let make_hole =
 
 let mark_alert loc exp : Parsetree.expression =
   let expstr =
-    Format.asprintf "Filled: (%a)" Ocaml_common.Pprintast.expression exp
+    Format.asprintf "Filled: %a" Ocaml_common.Pprintast.expression exp
   in
   let payload : Parsetree.expression =
     Ast_helper.Exp.constant (Ast_helper.Const.string expstr)
@@ -45,15 +45,13 @@ let rec match_instance env holety ident instty =
         | Some (Mono ident) -> Some (Poly (1, ident))
         | Some (Poly (n, ident)) -> Some (Poly (n + 1, ident))
         | None -> None)
-  | _ ->
-      (* prerr_endline "other"; *)
-      if Ctype.matches env holety instty then Some (Mono ident) else None
+  | _ -> if Ctype.matches env holety instty then Some (Mono ident) else None
 
 let is_instance (desc : Types.value_description) =
   List.exists (fun attr -> attr.attr_name.txt = "instance") desc.val_attributes
 
 let make_instance_list env =
-  let rec find_instances lvl = function
+  let rec loop lvl = function
     | Env.Env_empty -> []
     | Env_extension (s, _, _)
     | Env_modtype (s, _, _)
@@ -67,10 +65,10 @@ let make_instance_list env =
     | Env_persistent (s, _)
     | Env_value_unbound (s, _, _)
     | Env_module_unbound (s, _, _) ->
-        find_instances lvl s
+        loop lvl s
     | Env_value (s, ident, desc) ->
-        if is_instance desc then (ident, desc) :: find_instances lvl s
-        else find_instances lvl s
+        if is_instance desc then (ident, desc) :: loop lvl s
+        else loop lvl s
     | Env_open (s, path) ->
         let str_items mdecl =
           match mdecl.Types.md_type with
@@ -79,17 +77,17 @@ let make_instance_list env =
           | _ -> assert false
         in
         let lvl = lvl + 1 in
-        let rest = find_instances lvl s in
+        let rest = loop lvl s in
         let md = Env.find_module path env in
         List.fold_left
           (fun res -> function
             | Types.Sig_value (ident, desc, _) ->
-                if is_instance desc then (ident, desc) :: find_instances lvl s
-                else find_instances lvl s
+                if is_instance desc then (ident, desc) :: loop lvl s
+                else loop lvl s
             | _ -> res)
           rest (str_items md)
   in
-  find_instances 0 (Env.summary env)
+  loop 0 (Env.summary env)
 
 let resolve_instances (texp : Typedtree.expression) =
   let rec find_instances (instances : (Ident.t * Types.value_description) list)
@@ -136,12 +134,12 @@ let rec loop_typer_untyper str =
   let env = Compmisc.initial_env () in
   let tstr, _, _, _ = Typemod.type_structure env str in
   let untypstr = untyper.structure untyper tstr in
-  if str = untypstr then (
-    let out = open_out "/tmp/fillup_out.ml" in
-    output_string out
-      (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
-    close_out out;
-    untypstr)
+  if str = untypstr then
+    (* let out = open_out "/tmp/fillup_out.ml" in
+       output_string out
+         (Format.asprintf "%a" Ocaml_common.Pprintast.structure untypstr);
+       close_out out; *)
+    untypstr
   else loop_typer_untyper untypstr
 
 class replace_hashhash_with_holes =

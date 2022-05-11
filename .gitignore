@@ -32,6 +32,3 @@ _opam/
 
 .DS_store
 *.trace
-*.sh
-memo*
-test_tmp
