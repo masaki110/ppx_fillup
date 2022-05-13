@@ -1,15 +1,19 @@
 open Parsetree
 
+let mknoloc txt =
+  let open Ppxlib in
+  { txt; loc = !Ast_helper.default_loc}
+
 let make_hole =
   let cnt = ref 0 in
   fun loc ->
     cnt := !cnt + 1;
-    let typ = Ast_helper.Typ.var @@ "fillup_tmp_" ^ string_of_int !cnt in
+    let typ = Ast_helper.Typ.var @@ "HOLE_" ^ string_of_int !cnt in
     [%expr (assert false : [%t typ]) [@HOLE]]
 
 let mark_alert loc exp : Parsetree.expression =
   let expstr =
-    Format.asprintf "Filled: %a" Ocaml_common.Pprintast.expression exp
+    Format.asprintf "Filled: %a" Pprintast.expression exp
   in
   let payload : Parsetree.expression =
     Ast_helper.Exp.constant (Ast_helper.Const.string expstr)
@@ -31,7 +35,7 @@ let rec apply_holes n exp =
     apply_holes (n - 1) [%expr [%e exp] [%e make_hole loc]]
 
 let evar ident =
-  Ast_helper.Exp.ident (Location.mknoloc (Longident.Lident (Ident.name ident)))
+  Ast_helper.Exp.ident (mknoloc (Longident.Lident (Ident.name ident)))
 
 type instance = Poly of int * Ident.t | Mono of Ident.t
 
