@@ -3,36 +3,39 @@
 
 open OUnit2
 
-let printer x = x
-
 (* Show *)
 let show inst (v : 'a) = inst v
+(* let (show_string [@instance]) : 'a -> string = fun _ -> "" *)
 let (show_int [@instance]) = string_of_int
 let (show_float [@instance]) = string_of_float
 let (show_string [@instance]) = fun x : string -> x
 
 let test_show _ =
-  assert_equal ~printer "123" show ## 123;
-  assert_equal ~printer "1.23" show ## 1.23;
-  assert_equal ~printer "abc" show ## "abc"
+  assert_equal "123" show ## 123;
+  assert_equal "1.23" show ## 1.23;
+  assert_equal "abc" show ## "abc"
 
 let (show_option [@instance]) =
  fun inst -> function None -> "None" | Some i -> "Some " ^ inst i
 
 let (show_list [@instance]) =
- fun inst -> function [] -> "" | xs -> String.concat ", " (List.map inst xs)
+ fun inst xs -> String.concat ", " (List.map inst xs)
 
 let test_show_polymorphic _ =
   assert_equal "Some 123" show ## (Some 123);
   (* assert_equal "None" show ## None; *)
   assert_equal "123, 456, 789" show ## [ 123; 456; 789 ];
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
+  (* assert_equal "1.23, 4.56, 7.89" show ## [] *)
 
+module M = struct
+  let (show_bool [@instance]) = string_of_bool 
+end
 let test_local_declearation _ =
-  let (show_bool [@instance]) = string_of_bool in
+  let open M in
   assert_equal "true" show ## true
 
-let (float_int [@instance]) = float_of_int
+let (float_int [@instance]) = float_of_int 
 
 let average : int list -> float =
  fun xs ->
