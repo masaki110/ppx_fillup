@@ -1,20 +1,33 @@
 open Parsetree
 
+type id = Poly of int * Ident.t | Mono of Ident.t
+type instance = Ident.t * Types.value_description
+
+let prexp e =
+  let out = open_out "/tmp/fillup_out.ml" in
+  output_string out (Format.asprintf "%a" Pprintast.expression e);
+  close_out out
+
 let mknoloc txt =
   let open Ppxlib in
-  { txt; loc = !Ast_helper.default_loc}
+  { txt; loc = !Ast_helper.default_loc }
+
+let add_value_in_module_as_instance lid env =
+  Env.fold_values
+    (fun name _ desc acc ->
+      prerr_endline name;
+      (Ident.create_local name, desc) :: acc)
+    lid env []
 
 let make_hole =
   let cnt = ref 0 in
   fun loc ->
     cnt := !cnt + 1;
-    let typ = Ast_helper.Typ.var @@ "HOLE_" ^ string_of_int !cnt in
+    let typ = Ast_helper.Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
     [%expr (assert false : [%t typ]) [@HOLE]]
 
 let mark_alert loc exp : Parsetree.expression =
-  let expstr =
-    Format.asprintf "Filled: %a" Pprintast.expression exp
-  in
+  let expstr = Format.asprintf "Filled: %a" Pprintast.expression exp in
   let payload : Parsetree.expression =
     Ast_helper.Exp.constant (Ast_helper.Const.string expstr)
   in
@@ -36,8 +49,6 @@ let rec apply_holes n exp =
 
 let evar ident =
   Ast_helper.Exp.ident (mknoloc (Longident.Lident (Ident.name ident)))
-
-type instance = Poly of int * Ident.t | Mono of Ident.t
 
 let rec match_instance env holety ident instty =
   let instty = Ctype.repr @@ Ctype.expand_head env instty in
@@ -71,8 +82,7 @@ let make_instance_list env =
     | Env_module_unbound (s, _, _) ->
         loop lvl s
     | Env_value (s, ident, desc) ->
-        if is_instance desc then (ident, desc) :: loop lvl s
-        else loop lvl s
+        if is_instance desc then (ident, desc) :: loop lvl s else loop lvl s
     | Env_open (s, path) ->
         let str_items mdecl =
           match mdecl.Types.md_type with
@@ -94,11 +104,10 @@ let make_instance_list env =
   loop 0 (Env.summary env)
 
 let resolve_instances (texp : Typedtree.expression) =
-  let rec find_instances (instances : (Ident.t * Types.value_description) list)
-      =
+  let rec find_instances (instances : instance list) =
     match instances with
-    | (ident, desc) :: rest -> (
-        match match_instance texp.exp_env texp.exp_type ident desc.val_type with
+    | (id, desc) :: rest -> (
+        match match_instance texp.exp_env texp.exp_type id desc.val_type with
         | Some i -> i :: find_instances rest
         | None -> find_instances rest)
     | [] -> []
@@ -171,13 +180,25 @@ let transform str =
   loop_typer_untyper str
 
 (* Declaration of extension [%HOLE] : https://tarides.com/blog/2019-05-09-an-introduction-to-ocaml-ppx-ecosystem *)
-let extension s =
-  Ppxlib.Extension.declare s Ppxlib.Extension.Context.expression
-    Ppxlib.Ast_pattern.(pstr nil)
-    (fun ~loc ~path:_ -> make_hole loc)
+module MyExtension = struct
+  open Ppxlib
 
-let () =
-  Ppxlib.Driver.register_transformation
-    ~extensions:[ extension "HOLE" ]
-    ~instrument:(Ppxlib.Driver.Instrument.make ~position:After transform)
-    "ppx_fillup"
+  let hole =
+    Extension.declare "HOLE" Extension.Context.expression
+      Ast_pattern.(pstr nil)
+      (fun ~loc ~path:_ -> make_hole loc)
+
+  let open_instance =
+    Extension.declare "fillup" Extension.Context.expression
+      Ast_pattern.(single_expr_payload __)
+      (fun ~loc:_ ~path:_ e ->
+        prexp e;
+        e)
+
+  let driver =
+    Driver.register_transformation ~extensions:[ hole; open_instance ]
+      ~instrument:(Driver.Instrument.make ~position:After transform)
+      "ppx_fillup"
+end
+
+let () = MyExtension.driver
