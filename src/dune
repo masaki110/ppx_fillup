@@ -1,5 +1,5 @@
 (library
- (name ppx_fillup)
+ (name main)
  (public_name ppx_fillup)
  (kind ppx_rewriter)
  (libraries ppxlib)
