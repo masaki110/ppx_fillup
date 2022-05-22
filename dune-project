@@ -2,8 +2,8 @@
 
 (name ppx_fillup)
 
-(generate_opam_files true)
+; (generate_opam_files true)
 
-(package
- (name ppx_fillup)
- (depends ppxlib))
+; (package
+;  (name ppx_fillup)
+;  (depends ppxlib))
