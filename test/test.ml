@@ -5,8 +5,6 @@ open OUnit2
 
 (* Show *)
 let show inst (v : 'a) = inst v
-
-(* let (show_string [@instance]) : 'a -> string = fun _ -> "" *)
 let (show_int [@instance]) = string_of_int
 let (show_float [@instance]) = string_of_float
 let (show_string [@instance]) = fun x : string -> x
@@ -26,8 +24,8 @@ let test_show_polymorphic _ =
   assert_equal "Some 123" show ## (Some 123);
   (* assert_equal "None" show ## None; *)
   assert_equal "123, 456, 789" show ## [ 123; 456; 789 ];
+  (* assert_equal "1.23, 4.56, 7.89" show ## []; *)
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
-(* assert_equal "1.23, 4.56, 7.89" show ## [] *)
 
 module M = struct
   let (show_bool [@instance]) = string_of_bool
@@ -56,11 +54,16 @@ let test_ppx_deriving _ =
     show ## { id = 012; name = "ito" }
 
 (* open module for_ppx_fillup *)
-let test_open_module _ =
-  let open%fillup M in
-  show_bool true
-  (* assert_equal "true" show ## true *)
-(* assert_equal "true" (show show_bool true) *)
+module N = struct
+  let (show_bool2 [@instance]) = string_of_bool
+end
+
+open%fillup M
+
+let () =
+  let open%fillup N in
+  (* print_endline @@ show ## true; *)
+  ()
 
 let _ =
   let tests =
@@ -70,7 +73,6 @@ let _ =
            "test show polymorphic" >:: test_show_polymorphic;
            "test local declearation" >:: test_local_declearation;
            "test ppx_deriving" >:: test_ppx_deriving;
-           (* "test open module" >:: test_open_module; *)
          ]
   in
   run_test_tt_main tests
