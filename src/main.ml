@@ -72,33 +72,31 @@ module Fillup_hole = struct
       desc.val_attributes
 
   let make_instances env =
-    let rec search_sg acc = function
-      | [] -> acc
-      | x :: xs -> (
-          match x with
-          | Types.Sig_value (ident, desc, _) ->
-              if
-                is_instance desc
-                (* && Str.string_match
-                     (Str.regexp @@ name_dummy_module ^ "[0-9]+")
-                     (Ident.name ident) 0 *)
-              then search_sg ((ident, desc) :: acc) xs
-              else search_sg acc xs
-          | _ -> search_sg acc xs)
+    let ident_of_path =
+      Path.(
+        function
+        | Pident id -> id
+        | Pdot (_, s) -> Ident.create_local s
+        | _ -> assert false)
     in
-    let instances_of_path acc desc =
-      Path.(function Pident id -> (id, desc) :: acc | _ -> acc)
-    in
+    (* let rec search_sg acc = function
+         | [] -> acc
+         | x :: xs -> (
+             match x with
+             | Types.Sig_value (ident, desc, _) ->
+                 if
+                   is_instance desc
+                   (* && Str.string_match
+                        (Str.regexp @@ name_dummy_module ^ "[0-9]+")
+                        (Ident.name ident) 0 *)
+                 then search_sg ((ident, desc) :: acc) xs
+                 else search_sg acc xs
+             | _ -> search_sg acc xs)
+       in *)
     Env.fold_values
       (fun _ path desc acc ->
-        if is_instance desc then instances_of_path acc desc path else acc)
+        if is_instance desc then (ident_of_path path, desc) :: acc else acc)
       None env []
-    @ Env.fold_modules
-        (fun _ _ decl acc ->
-          match decl.Types.md_type with
-          | Mty_signature sg -> search_sg acc sg
-          | _ -> acc)
-        None env []
   (* @ Env.fold_modules
       (fun _ _ decl acc ->
         match decl.Types.md_type with
