@@ -34,7 +34,6 @@ end
 
 let test_local_declearation _ =
   let open M in
-  assert_equal "123" @@ show show_int2 123;
   assert_equal "true" @@ show ## true;
   assert_equal "123" @@ show ## 123
 
