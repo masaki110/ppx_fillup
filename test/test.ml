@@ -28,12 +28,15 @@ let test_show_polymorphic _ =
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
 
 module M = struct
+  let (show_int2) = string_of_int
   let (show_bool [@instance]) = string_of_bool
 end
 
 let test_local_declearation _ =
   let open M in
-  assert_equal "true" show ## true
+  assert_equal "123" @@ show show_int2 123;
+  assert_equal "true" @@ show ## true;
+  assert_equal "123" @@ show ## 123
 
 let (float_int [@instance]) = float_of_int
 
@@ -54,16 +57,16 @@ let test_ppx_deriving _ =
     show ## { id = 012; name = "ito" }
 
 (* open module for_ppx_fillup *)
-module N = struct
-  let (show_bool2 [@instance]) = string_of_bool
-end
+(* module N = struct
+     let (show_bool2 [@instance]) = string_of_bool
+   end
 
-open%fillup M
+   open%fillup M
 
-let () =
-  let open%fillup N in
-  (* print_endline @@ show ## true; *)
-  ()
+   let () =
+     let open%fillup N in
+     (* print_endline @@ show ## true; *)
+     () *)
 
 let _ =
   let tests =
