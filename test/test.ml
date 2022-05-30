@@ -47,13 +47,13 @@ let average : int list -> float =
   [%HOLE] sum /. [%HOLE] count
 
 (* deriving show *)
-open Ppx_fillup_ppx_deriving
+(* open Ppx_fillup_ppx_deriving
 
 type student = { id : int; name : string } [@@deriving show, eq, ord, fillup]
 
 let test_ppx_deriving _ =
   assert_equal "{ Test.id = 12; name = \"ito\" }"
-    show ## { id = 012; name = "ito" }
+    show ## { id = 012; name = "ito" } *)
 
 (* open module for_ppx_fillup *)
 (* module N = struct
@@ -74,7 +74,7 @@ let _ =
            "test show" >:: test_show;
            "test show polymorphic" >:: test_show_polymorphic;
            "test local declearation" >:: test_local_declearation;
-           "test ppx_deriving" >:: test_ppx_deriving;
+           (* "test ppx_deriving" >:: test_ppx_deriving; *)
          ]
   in
   run_test_tt_main tests
