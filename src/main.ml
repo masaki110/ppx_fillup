@@ -31,9 +31,7 @@ module Fillup_hole = struct
       let typ = Ast_helper.Typ.var @@ name_hole_type ^ string_of_int !cnt in
       [%expr (assert false : [%t typ]) [@HOLE]]
 
-  let mark_alert_flag = ref false
-
-  let mark_alert ~loc exp : Parsetree.expression =
+  let mark_alert exp =
     let expstr =
       Format.asprintf "ppx_fillup Filled: %a" Pprintast.expression exp
     in
@@ -42,12 +40,11 @@ module Fillup_hole = struct
       {
         Parsetree.attr_name = { txt = "ppwarning"; loc = Location.none };
         attr_payload =
-          PStr [ { pstr_desc = Pstr_eval (payload, []); pstr_loc = loc } ];
+          PStr
+            [ { pstr_desc = Pstr_eval (payload, []); pstr_loc = exp.pexp_loc } ];
         attr_loc = Location.none;
       }
     in
-    (* let rec loop acc = function
-       | *)
     { exp with pexp_attributes = attr :: exp.Parsetree.pexp_attributes }
 
   let rec apply_holes n exp =
@@ -120,32 +117,20 @@ module Fillup_hole = struct
     in
     find_instances (make_instances texp.exp_env)
 
-  let make_attr name ~loc ~payload =
+  let mkattr name ~loc ~payload =
     { attr_name = mkloc ~loc name; attr_payload = payload; attr_loc = loc }
 
-  let hole_to_filled attrs =
-    let rec loop acc = function
-      | ({ attr_name = name; attr_loc = loc; attr_payload = payload } as attr)
-        :: attrs ->
-          if name.txt = "HOLE" then
-            (make_attr "FILLED" ~loc ~payload :: acc) @ attrs
-          else loop (attr :: acc) attrs
-      | [] -> acc
-    in
-    loop [] attrs
-
   let fillup_hole (texp : Typedtree.expression) =
-    let loc = texp.exp_loc in
-    let attrs = texp.exp_attributes in
+    let loc, attrs = (texp.exp_loc, texp.exp_attributes) in
     match resolve_instances texp with
     | [ Mono ident ] -> evar ~loc ~attrs ident
     | [ Poly (n, ident) ] ->
         [%expr [%e apply_holes n @@ evar ~loc ~attrs ident]]
     | _ :: _ ->
-        Location.raise_errorf ~loc "ppx_fillup Error : Instance overlapped : %a"
+        Location.raise_errorf ~loc "ppx_fillup Error : Instance overlapped %a"
           Printtyp.type_expr texp.exp_type
     | [] ->
-        Location.raise_errorf ~loc "ppx_fillup Error : Instance not found : %a"
+        Location.raise_errorf ~loc "ppx_fillup Error : Instance not found %a"
           Printtyp.type_expr texp.exp_type
 
   let is_hole (texp : Typedtree.expression) =
@@ -162,45 +147,50 @@ module Fillup_hole = struct
   let untyper =
     let super = Untypeast.default_mapper in
     {
-      Untypeast.default_mapper with
+      super with
       expr =
         (fun self (texp : Typedtree.expression) ->
           if is_hole texp then fillup_hole texp else super.expr self texp);
     }
 
+  let alert_mapper =
+    { Ast_mapper.default_mapper with expr = (fun _ exp -> mark_alert exp) }
+
   let rec loop_typer_untyper str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let tstr, _, _, _ = Typemod.type_structure env str in
-    let untypstr = untyper.structure untyper tstr in
-    if str = untypstr then (
-      (* print_out (Format.asprintf "%a" Pprintast.structure untypstr); *)
-      mark_alert_flag := true;
-      untypstr)
-    else loop_typer_untyper untypstr
+    let str' = untyper.structure untyper tstr in
+    if str = str' then (
+      print_out (Format.asprintf "%a" Pprintast.structure str');
+      alert_mapper.structure alert_mapper str')
+    else loop_typer_untyper str'
 
-  class replace_hashhash_with_holes =
-    object (this)
-      inherit Ppxlib.Ast_traverse.map as super
-
-      method! expression exp =
-        match exp.pexp_desc with
-        | Pexp_apply
-            ( {
-                pexp_desc = Pexp_ident { txt = Lident "##"; _ };
-                pexp_loc = loc_hole;
-                _;
-              },
-              [ (_, arg1); (_, arg2) ] ) ->
-            let loc = loc_hole in
-            Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
-              (this#expression arg1)
-              [ (Nolabel, make_hole ~loc); (Nolabel, this#expression arg2) ]
-        | _ -> super#expression exp
-    end
+  let replace_hashhash_with_holes =
+    let super = Ast_mapper.default_mapper in
+    {
+      super with
+      expr =
+        (fun self exp ->
+          match exp.pexp_desc with
+          | Pexp_apply
+              ( {
+                  pexp_desc = Pexp_ident { txt = Lident "##"; _ };
+                  pexp_loc = loc_hole;
+                  _;
+                },
+                [ (_, arg1); (_, arg2) ] ) ->
+              let loc = loc_hole in
+              Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
+                (self.expr self arg1)
+                [ (Nolabel, make_hole ~loc); (Nolabel, self.expr self arg2) ]
+          | _ -> super.expr self exp);
+    }
 
   let transform str =
-    let str = (new replace_hashhash_with_holes)#structure str in
+    let str =
+      replace_hashhash_with_holes.structure replace_hashhash_with_holes str
+    in
     loop_typer_untyper str
 end
 
