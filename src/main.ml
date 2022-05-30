@@ -1,13 +1,10 @@
 open Parsetree
 
-let name_dummy_module =
+let mk_dummy_module =
   let cnt = ref 0 in
   fun () ->
     cnt := !cnt + 1;
     "Fillup_dummy_module" ^ string_of_int !cnt
-
-let name_hole_type = "fillup_hole"
-let print_ident id = print_endline @@ Ident.name id
 
 let print_out x =
   let out = open_out @@ "/tmp/fillup_out" in
@@ -24,12 +21,25 @@ module Fillup_hole = struct
   type id = Poly of int * Ident.t | Mono of Ident.t
   type instance = Ident.t * Types.value_description
 
-  let make_hole =
+  let mkhole =
     let cnt = ref 0 in
     fun ~loc ->
       cnt := !cnt + 1;
-      let typ = Ast_helper.Typ.var @@ name_hole_type ^ string_of_int !cnt in
+      let typ = Ast_helper.Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
       [%expr (assert false : [%t typ]) [@HOLE]]
+
+  let mkattr name ~loc =
+    { attr_name = mkloc ~loc name; attr_payload = PStr []; attr_loc = loc }
+
+  let rec apply_holes n exp =
+    if n = 0 then exp
+    else
+      let loc = exp.pexp_loc in
+      apply_holes (n - 1) [%expr [%e exp] [%e mkhole ~loc]]
+
+  let evar ~loc ~attrs ident =
+    Ast_helper.Exp.ident ~loc ~attrs
+      (mknoloc (Longident.Lident (Ident.name ident)))
 
   let mark_alert exp =
     let expstr =
@@ -47,15 +57,20 @@ module Fillup_hole = struct
     in
     { exp with pexp_attributes = attr :: exp.Parsetree.pexp_attributes }
 
-  let rec apply_holes n exp =
-    if n = 0 then exp
-    else
-      let loc = exp.pexp_loc in
-      apply_holes (n - 1) [%expr [%e exp] [%e make_hole ~loc]]
+  let alert_filled (super : Ast_mapper.mapper) (self : Ast_mapper.mapper)
+      (exp : Parsetree.expression) =
+    let exists_filled attrs =
+      List.exists (fun attr -> attr.attr_name.txt = "FILLED") attrs
+    in
+    if exists_filled exp.pexp_attributes then
+      let exp = super.expr self exp in
+      mark_alert exp
+    else super.expr self exp
 
-  let evar ~loc ~attrs ident =
-    Ast_helper.Exp.ident ~loc ~attrs
-      (mknoloc (Longident.Lident (Ident.name ident)))
+  let alert_mapper f str =
+    let super = Ast_mapper.default_mapper in
+    let mapper = { super with expr = f super } in
+    mapper.structure mapper str
 
   let rec match_instance env holety ident instty =
     let instty = Ctype.repr @@ Ctype.expand_head env instty in
@@ -82,30 +97,10 @@ module Fillup_hole = struct
         | Pdot (_, s) -> Ident.create_local s
         | _ -> assert false)
     in
-    (* let rec search_sg acc = function
-         | [] -> acc
-         | x :: xs -> (
-             match x with
-             | Types.Sig_value (ident, desc, _) ->
-                 if
-                   is_instance desc
-                   (* && Str.string_match
-                        (Str.regexp @@ name_dummy_module ^ "[0-9]+")
-                        (Ident.name ident) 0 *)
-                 then search_sg ((ident, desc) :: acc) xs
-                 else search_sg acc xs
-             | _ -> search_sg acc xs)
-       in *)
     Env.fold_values
       (fun _ path desc acc ->
         if is_instance desc then (ident_of_path path, desc) :: acc else acc)
       None env []
-  (* @ Env.fold_modules
-      (fun _ _ decl acc ->
-        match decl.Types.md_type with
-        | Mty_signature sg -> search_sg acc sg
-        | _ -> acc)
-      None env [] *)
 
   let resolve_instances (texp : Typedtree.expression) =
     let rec find_instances = function
@@ -117,11 +112,9 @@ module Fillup_hole = struct
     in
     find_instances (make_instances texp.exp_env)
 
-  let mkattr name ~loc ~payload =
-    { attr_name = mkloc ~loc name; attr_payload = payload; attr_loc = loc }
-
   let fillup_hole (texp : Typedtree.expression) =
-    let loc, attrs = (texp.exp_loc, texp.exp_attributes) in
+    let loc = texp.exp_loc in
+    let attrs = mkattr "FILLED" ~loc :: texp.exp_attributes in
     match resolve_instances texp with
     | [ Mono ident ] -> evar ~loc ~attrs ident
     | [ Poly (n, ident) ] ->
@@ -153,17 +146,17 @@ module Fillup_hole = struct
           if is_hole texp then fillup_hole texp else super.expr self texp);
     }
 
-  let alert_mapper =
-    { Ast_mapper.default_mapper with expr = (fun _ exp -> mark_alert exp) }
-
-  let rec loop_typer_untyper str =
+  let typer_untyper str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let tstr, _, _, _ = Typemod.type_structure env str in
-    let str' = untyper.structure untyper tstr in
+    untyper.structure untyper tstr
+
+  let rec loop_typer_untyper str =
+    let str' = typer_untyper str in
     if str = str' then (
       print_out (Format.asprintf "%a" Pprintast.structure str');
-      alert_mapper.structure alert_mapper str')
+      alert_mapper alert_filled str')
     else loop_typer_untyper str'
 
   let replace_hashhash_with_holes =
@@ -183,7 +176,7 @@ module Fillup_hole = struct
               let loc = loc_hole in
               Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
                 (self.expr self arg1)
-                [ (Nolabel, make_hole ~loc); (Nolabel, self.expr self arg2) ]
+                [ (Nolabel, mkhole ~loc); (Nolabel, self.expr self arg2) ]
           | _ -> super.expr self exp);
     }
 
@@ -202,7 +195,7 @@ module Driver = struct
   let hole =
     Extension.declare "HOLE" Extension.Context.expression
       Ast_pattern.(pstr nil)
-      (fun ~loc ~path:_ -> Fillup_hole.make_hole ~loc)
+      (fun ~loc ~path:_ -> Fillup_hole.mkhole ~loc)
 
   (* open%fillup M --> module Dummy = M;; open Dummy*)
   let open_instance_toplevel =
@@ -210,7 +203,7 @@ module Driver = struct
       Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
       (fun ~loc ~path:_ open_module ->
         let mod_exp = open_module.popen_expr in
-        let dummy_name = name_dummy_module () in
+        let dummy_name = mk_dummy_module () in
         {
           pstr_desc =
             Pstr_module
@@ -229,7 +222,7 @@ module Driver = struct
       Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
       (fun ~loc ~path:_ open_module expr ->
         let mod_exp = open_module.popen_expr in
-        let dummy_name = name_dummy_module () in
+        let dummy_name = mk_dummy_module () in
         {
           pexp_desc =
             Pexp_letmodule (mkloc ~loc @@ Some dummy_name, mod_exp, expr);
