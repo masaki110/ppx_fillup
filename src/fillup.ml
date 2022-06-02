@@ -24,7 +24,8 @@ let alert_filled (super : Ast_mapper.mapper) (self : Ast_mapper.mapper)
     (exp : Parsetree.expression) =
   if attr_exists exp.pexp_attributes "FILLED" then
     let exp = super.expr self exp in
-    mark_alert exp
+    mark_alert
+      { exp with pexp_attributes = rmattrs exp.pexp_attributes "FILLED" }
   else super.expr self exp
 
 let rec apply_holes n exp =
@@ -94,7 +95,10 @@ let is_hole (texp : Typedtree.expression) =
 
 let search_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
     (texp : Typedtree.expression) =
-  if is_hole texp then fillup_hole texp else super.expr self texp
+  if is_hole texp then
+    fillup_hole
+      { texp with exp_attributes = rmattrs texp.exp_attributes "HOLE" }
+  else super.expr self texp
 
 let rec loop_typer_untyper str =
   Compmisc.init_path ();
