@@ -28,14 +28,14 @@ let test_show_polymorphic _ =
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
 
 module M = struct
-  let (show_int2) = string_of_int
+  let show_int2 = string_of_int
   let (show_bool [@instance]) = string_of_bool
 end
 
 let test_local_declearation _ =
   let open M in
-  assert_equal "true" @@ show ## true;
-  assert_equal "123" @@ show ## 123
+  assert_equal "true" @@ (show ## true);
+  assert_equal "123" @@ (show ## 123)
 
 let (float_int [@instance]) = float_of_int
 
@@ -49,11 +49,11 @@ let average : int list -> float =
 (* deriving show *)
 (* open Ppx_fillup_ppx_deriving
 
-type student = { id : int; name : string } [@@deriving show, eq, ord, fillup]
+   type student = { id : int; name : string } [@@deriving show, eq, ord, fillup]
 
-let test_ppx_deriving _ =
-  assert_equal "{ Test.id = 12; name = \"ito\" }"
-    show ## { id = 012; name = "ito" } *)
+   let test_ppx_deriving _ =
+     assert_equal "{ Test.id = 12; name = \"ito\" }"
+       show ## { id = 012; name = "ito" } *)
 
 (* open module for_ppx_fillup *)
 (* module N = struct
@@ -73,8 +73,8 @@ let _ =
     >::: [
            "test show" >:: test_show;
            "test show polymorphic" >:: test_show_polymorphic;
-           "test local declearation" >:: test_local_declearation;
-           (* "test ppx_deriving" >:: test_ppx_deriving; *)
+           "test local declearation" >:: test_local_declearation
+           (* "test ppx_deriving" >:: test_ppx_deriving; *);
          ]
   in
   run_test_tt_main tests
