@@ -4,26 +4,6 @@ open Util
 type id = Poly of int * Ident.t | Mono of Ident.t
 type instance = Ident.t * Types.value_description
 
-let mkhole =
-  let cnt = ref 0 in
-  fun ~loc ->
-    cnt := !cnt + 1;
-    let typ = Ast_helper.Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
-    [%expr (assert false : [%t typ]) [@HOLE]]
-
-let mkattr name ~loc =
-  { attr_name = mkloc ~loc name; attr_payload = PStr []; attr_loc = loc }
-
-let rec apply_holes n exp =
-  if n = 0 then exp
-  else
-    let loc = exp.pexp_loc in
-    apply_holes (n - 1) [%expr [%e exp] [%e mkhole ~loc]]
-
-let evar ~loc ~attrs ident =
-  Ast_helper.Exp.ident ~loc ~attrs
-    (mknoloc (Longident.Lident (Ident.name ident)))
-
 let mark_alert exp =
   let expstr =
     Format.asprintf "ppx_fillup Filled: %a" Pprintast.expression exp
@@ -42,18 +22,16 @@ let mark_alert exp =
 
 let alert_filled (super : Ast_mapper.mapper) (self : Ast_mapper.mapper)
     (exp : Parsetree.expression) =
-  let exists_filled attrs =
-    List.exists (fun attr -> attr.attr_name.txt = "FILLED") attrs
-  in
-  if exists_filled exp.pexp_attributes then
+  if attr_exists exp.pexp_attributes "FILLED" then
     let exp = super.expr self exp in
     mark_alert exp
   else super.expr self exp
 
-let alert_mapper f str =
-  let super = Ast_mapper.default_mapper in
-  let mapper = { super with expr = f super } in
-  mapper.structure mapper str
+let rec apply_holes n exp =
+  if n = 0 then exp
+  else
+    let loc = exp.pexp_loc in
+    apply_holes (n - 1) [%expr [%e exp] [%e mkhole ~loc]]
 
 let rec match_instance env holety ident instty =
   let instty = Ctype.repr @@ Ctype.expand_head env instty in
@@ -67,9 +45,6 @@ let rec match_instance env holety ident instty =
         | None -> None)
   | _ -> if Ctype.matches env holety instty then Some (Mono ident) else None
 
-let is_instance (desc : Types.value_description) =
-  List.exists (fun attr -> attr.attr_name.txt = "instance") desc.val_attributes
-
 let make_instances env =
   let ident_of_path =
     Path.(
@@ -80,7 +55,9 @@ let make_instances env =
   in
   Env.fold_values
     (fun _ path desc acc ->
-      if is_instance desc then (ident_of_path path, desc) :: acc else acc)
+      if attr_exists desc.val_attributes "instance" then
+        (ident_of_path path, desc) :: acc
+      else acc)
     None env []
 
 let resolve_instances (texp : Typedtree.expression) =
@@ -107,61 +84,44 @@ let fillup_hole (texp : Typedtree.expression) =
         Printtyp.type_expr texp.exp_type
 
 let is_hole (texp : Typedtree.expression) =
-  let exists_hole attrs =
-    List.exists (fun attr -> attr.attr_name.txt = "HOLE") attrs
-  in
   let rec search_texp_extra = function
     | (_, _, attrs) :: rest ->
-        if exists_hole attrs then true else search_texp_extra rest
+        if attr_exists attrs "HOLE" then true else search_texp_extra rest
     | [] -> false
   in
-  exists_hole texp.exp_attributes || search_texp_extra texp.exp_extra
+  if attr_exists texp.exp_attributes "HOLE" then true
+  else search_texp_extra texp.exp_extra
 
-let untyper =
-  let super = Untypeast.default_mapper in
-  {
-    super with
-    expr =
-      (fun self (texp : Typedtree.expression) ->
-        if is_hole texp then fillup_hole texp else super.expr self texp);
-  }
+let search_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
+    (texp : Typedtree.expression) =
+  if is_hole texp then fillup_hole texp else super.expr self texp
 
-let typer_untyper str =
+let rec loop_typer_untyper str =
   Compmisc.init_path ();
   let env = Compmisc.initial_env () in
   let tstr, _, _, _ = Typemod.type_structure env str in
-  untyper.structure untyper tstr
-
-let rec loop_typer_untyper str =
-  let str' = typer_untyper str in
-  if str = str' then (
-    print_out (Format.asprintf "%a" Pprintast.structure str');
-    alert_mapper alert_filled str')
+  let str' = untyp_expr_mapper search_hole tstr in
+  if str = str' then
+    (* print_out (Format.asprintf "%a" Pprintast.structure str'); *)
+    expr_mapper alert_filled str'
   else loop_typer_untyper str'
 
-let replace_hashhash_with_holes =
-  let super = Ast_mapper.default_mapper in
-  {
-    super with
-    expr =
-      (fun self exp ->
-        match exp.pexp_desc with
-        | Pexp_apply
-            ( {
-                pexp_desc = Pexp_ident { txt = Lident "##"; _ };
-                pexp_loc = loc_hole;
-                _;
-              },
-              [ (_, arg1); (_, arg2) ] ) ->
-            let loc = loc_hole in
-            Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
-              (self.expr self arg1)
-              [ (Nolabel, mkhole ~loc); (Nolabel, self.expr self arg2) ]
-        | _ -> super.expr self exp);
-  }
+let replace_hashhash_with_holes (super : Ast_mapper.mapper)
+    (self : Ast_mapper.mapper) exp =
+  match exp.pexp_desc with
+  | Pexp_apply
+      ( {
+          pexp_desc = Pexp_ident { txt = Lident "##"; _ };
+          pexp_loc = loc_hole;
+          _;
+        },
+        [ (_, arg1); (_, arg2) ] ) ->
+      let loc = loc_hole in
+      Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
+        (self.expr self arg1)
+        [ (Nolabel, mkhole ~loc); (Nolabel, self.expr self arg2) ]
+  | _ -> super.expr self exp
 
 let transform str =
-  let str =
-    replace_hashhash_with_holes.structure replace_hashhash_with_holes str
-  in
+  let str = expr_mapper replace_hashhash_with_holes str in
   loop_typer_untyper str
