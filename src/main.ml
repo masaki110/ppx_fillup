@@ -1,4 +1,3 @@
-(* open Parsetree *)
 open Ppxlib
 open Util
 
@@ -8,7 +7,7 @@ let hole =
     Ast_pattern.(pstr nil)
     (fun ~loc ~path:_ -> mkhole ~loc)
 
-(* open%fillup M --> module Dummy = M;; open Dummy*)
+(* open%fillup M --> module Dummy = M *)
 let open_instance_toplevel =
   Extension.declare "fillup" Extension.Context.structure_item
     Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
