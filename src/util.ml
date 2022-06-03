@@ -46,8 +46,50 @@ let attr_exists attrs txt =
     (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
     attrs
 
-let rmattrs attrs txt =
-  List.filter
-    (fun (attr : Parsetree.attribute) -> attr.attr_name.txt != txt)
-    attrs
-    
+let match_attrs attrs txt =
+  let rec loop acc = function
+    | [] -> acc
+    | attr :: attrs ->
+        if attr.attr_name.txt = txt then acc @ attrs
+        else loop (attr :: acc) attrs
+  in
+  loop [] attrs
+
+let check_attr_expr exp txt =
+  let rec loop acc = function
+    | [] -> None
+    | attr :: attrs ->
+        if attr.attr_name.txt = txt then
+          Some { exp with pexp_attributes = acc @ attrs }
+        else loop (attr :: acc) attrs
+  in
+  loop [] exp.pexp_attributes
+
+let check_attr_texpr texp txt =
+  Typedtree.(
+    let rec match_attrs acc texp = function
+      | [] -> None
+      | attr :: attrs ->
+          if attr.attr_name.txt = txt then
+            Some { texp with exp_attributes = acc @ attrs }
+          else match_attrs (attr :: acc) texp attrs
+    in
+    let rec match_extra acc texp = function
+      | [] -> None
+      | (ex, loc, attrs) :: rest ->
+          let rec loop acc' = function
+            | [] -> match_extra ((ex, loc, attrs) :: acc) texp rest
+            | attr' :: attrs' ->
+                if attr'.attr_name.txt = txt then
+                  Some
+                    {
+                      texp with
+                      exp_extra = ((ex, loc, acc' @ attrs') :: acc) @ rest;
+                    }
+                else loop (attr' :: acc') attrs
+          in
+          loop [] attrs
+    in
+    match match_attrs [] texp texp.exp_attributes with
+    | Some e -> Some e
+    | None -> match_extra [] texp texp.exp_extra)

@@ -22,11 +22,9 @@ let mark_alert exp =
 
 let alert_filled (super : Ast_mapper.mapper) (self : Ast_mapper.mapper)
     (exp : Parsetree.expression) =
-  if attr_exists exp.pexp_attributes "FILLED" then
-    let exp = super.expr self exp in
-    mark_alert
-      { exp with pexp_attributes = rmattrs exp.pexp_attributes "FILLED" }
-  else super.expr self exp
+  match check_attr_expr exp "FILLED" with
+  | None -> super.expr self exp
+  | Some e -> mark_alert e
 
 let rec apply_holes n exp =
   if n = 0 then exp
@@ -84,21 +82,11 @@ let fillup_hole (texp : Typedtree.expression) =
       Location.raise_errorf ~loc "ppx_fillup Error : Instance not found %a"
         Printtyp.type_expr texp.exp_type
 
-let is_hole (texp : Typedtree.expression) =
-  let rec search_texp_extra = function
-    | (_, _, attrs) :: rest ->
-        if attr_exists attrs "HOLE" then true else search_texp_extra rest
-    | [] -> false
-  in
-  if attr_exists texp.exp_attributes "HOLE" then true
-  else search_texp_extra texp.exp_extra
-
 let search_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
     (texp : Typedtree.expression) =
-  if is_hole texp then
-    fillup_hole
-      { texp with exp_attributes = rmattrs texp.exp_attributes "HOLE" }
-  else super.expr self texp
+  match check_attr_texpr texp "HOLE" with
+  | None -> super.expr self texp
+  | Some texp -> fillup_hole texp
 
 let rec loop_typer_untyper str =
   Compmisc.init_path ();
