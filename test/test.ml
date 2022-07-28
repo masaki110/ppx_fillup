@@ -37,35 +37,26 @@ let test_local_declearation _ =
   assert_equal "true" @@ (show ## true);
   assert_equal "123" @@ (show ## 123)
 
+let (float_float [@instance]) = fun x : float -> x
+let (float_string [@instance]) = float_of_string
 let (float_int [@instance]) = float_of_int
+let add inst1 inst2 x y = inst1 x +. inst2 y
 
-let average : int list -> float =
- fun xs ->
-  let sum, count =
-    xs |> List.fold_left (fun (sum, count) x -> (sum + x, succ count)) (0, 0)
-  in
-  [%HOLE] sum /. [%HOLE] count
-
-(* deriving show *)
-(* open Ppx_fillup_ppx_deriving
-
-   type student = { id : int; name : string } [@@deriving show, eq, ord, fillup]
-
-   let test_ppx_deriving _ =
-     assert_equal "{ Test.id = 12; name = \"ito\" }"
-       show ## { id = 012; name = "ito" } *)
+let () =
+  print_float @@ add [%HOLE] [%HOLE] 4 "3";
+  ()
 
 (* open module for_ppx_fillup *)
-(* module N = struct
-     let (show_bool2 [@instance]) = string_of_bool
-   end
+module N = struct
+  let (show_bool2 [@instance]) = string_of_bool
+end
 
-   open%fillup M
+(* open%fillup M *)
 
-   let () =
-     let open%fillup N in
-     (* print_endline @@ show ## true; *)
-     () *)
+let () =
+  let open%fillup N in
+  print_endline @@ (show ## true);
+  ()
 
 let _ =
   let tests =
