@@ -46,36 +46,6 @@ let rec match_instance env holety ident instty =
   | _ -> if Ctype.matches env holety instty then Some (Mono ident) else None
 
 let make_instances env =
-  (* let md_values env =
-       let mds env =
-         Env.fold_modules
-           (fun name _ md acc ->
-             if Str.(string_match (regexp "Fillup_dummy_module") name 0) then (
-               print_endline name;
-               md :: acc)
-             else acc)
-           None env []
-       in
-       let rec str_items md =
-         match md.Types.md_type with
-         | Mty_signature sg -> sg
-         | Mty_functor _ -> []
-         | Mty_alias p | Mty_ident p -> str_items @@ Env.find_module p env
-       in
-       let sgs = List.map str_items (mds env) in
-       let rec loop acc = function
-         | [] -> acc
-         | sg :: rest ->
-             loop
-               (List.fold_left
-                  (fun acc -> function
-                    | Types.Sig_value (ident, desc, _) -> (ident, desc) :: acc
-                    | _ -> acc)
-                  acc sg)
-               rest
-       in
-       loop [] sgs
-     in *)
   let md_values env =
     let mds env =
       Env.fold_modules
@@ -102,34 +72,7 @@ let make_instances env =
       | Mty_functor _ | Mty_ident _ -> []
     in
     List.concat @@ List.map (str_items None) (mds env)
-    (* List.map (fun md -> (path, str_items md)) (mds env) *)
-    (* let rec loop acc = function
-         | [] -> acc
-         | sg :: rest ->
-             loop
-               (List.fold_left
-                  (fun acc -> function
-                    | Types.Sig_value (ident, desc, _) -> (ident, desc) :: acc
-                    | _ -> acc)
-                  acc sg)
-               rest
-       in *)
   in
-  (* let env_values env =
-       let ident_of_path =
-         Path.(
-           function
-           | Pident id -> id
-           | Pdot (_, s) -> Ident.create_local s
-           | Papply _ -> assert false)
-       in
-       Env.fold_values
-         (fun _ path desc acc ->
-           if attr_exists desc.val_attributes "instance" then
-             (ident_of_path path, desc) :: acc
-           else acc)
-         None env []
-     in *)
   let env_values env =
     Env.fold_values
       (fun _ path desc acc ->
