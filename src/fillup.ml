@@ -76,7 +76,10 @@ let make_instances env =
   let env_values env =
     Env.fold_values
       (fun _ path desc acc ->
-        if attr_exists desc.val_attributes "instance" then (path, desc) :: acc
+        if attr_exists desc.val_attributes "instance" then
+          match path with
+          | Pdot (_, s) -> (Path.Pident (Ident.create_local s), desc) :: acc
+          | _ -> (path, desc) :: acc
         else acc)
       None env []
   in
