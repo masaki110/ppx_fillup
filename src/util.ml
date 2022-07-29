@@ -15,6 +15,17 @@ let mkloc ~loc txt =
 
 let mknoloc txt = mkloc ~loc:!Ast_helper.default_loc txt
 
+let open_instnce_attr_name = "open_instnce"
+
+let open_instnce_attr =
+  Parsetree.(
+    fun ~loc ?(payload = PStr []) () ->
+      {
+        attr_name = mkloc ~loc open_instnce_attr_name;
+        attr_payload = payload;
+        attr_loc = loc;
+      })
+
 let expr_mapper f str =
   let super = Ast_mapper.default_mapper in
   let self = { super with expr = f super } in
@@ -28,6 +39,19 @@ let untyp_expr_mapper f tstr =
 let evar ~loc ~attrs ident =
   Ast_helper.Exp.ident ~loc ~attrs
     (mknoloc (Longident.Lident (Ident.name ident)))
+
+let lid_of_path path =
+  let rec loop =
+    Path.(
+      function
+      | Pident id -> Longident.Lident (Ident.name id)
+      | Pdot (p, str) -> Longident.Ldot (loop p, str)
+      | Papply (p1, p2) -> Longident.Lapply (loop p1, loop p2))
+  in
+  loop path
+
+let evar' ~loc ~attrs path =
+  Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lid_of_path path
 
 open Parsetree
 
