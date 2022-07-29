@@ -28,7 +28,6 @@ let test_show_polymorphic _ =
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
 
 module M = struct
-  let show_int2 = string_of_int
   let (show_bool [@instance]) = string_of_bool
 end
 
