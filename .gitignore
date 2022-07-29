@@ -32,4 +32,3 @@ _opam/
 
 .DS_store
 *.trace
-dune
