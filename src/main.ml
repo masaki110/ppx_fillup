@@ -30,11 +30,11 @@ let open_instance_toplevel =
 let open_instance_local =
   Extension.declare "fillup" Extension.Context.expression
     Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
-    (fun ~loc ~path:_ open_module expr ->
-      let mod_exp = open_module.popen_expr in
+    (fun ~loc ~path:_ md expr ->
+      let md_exp = md.popen_expr in
       let dummy_name = mk_dummy_module () in
       {
-        pexp_desc = Pexp_letmodule (mkloc ~loc @@ Some dummy_name, mod_exp, expr);
+        pexp_desc = Pexp_letmodule (mkloc ~loc @@ Some dummy_name, md_exp, expr);
         pexp_loc = loc;
         pexp_loc_stack = [];
         pexp_attributes = [];
