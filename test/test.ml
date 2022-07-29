@@ -29,6 +29,7 @@ let test_show_polymorphic _ =
 
 module M = struct
   let (show_bool [@instance]) = string_of_bool
+  let (show_int2) = string_of_int
 end
 
 let test_local_declearation _ =
@@ -46,11 +47,14 @@ let () =
   ()
 
 (* open module for_ppx_fillup *)
-module N = struct
-  let (show_bool2 [@instance]) = string_of_bool
+module O = struct
+  module N = struct
+    let (show_bool2 [@instance]) = string_of_bool
+  end
 end
 
 (* open%fillup M *)
+open O
 
 let () =
   let open%fillup N in
