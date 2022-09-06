@@ -144,6 +144,12 @@ let replace_hashhash_with_holes (super : Ast_mapper.mapper)
         [ (Nolabel, mkhole ~loc); (Nolabel, self.expr self arg2) ]
   | _ -> super.expr self exp
 
-let transform str =
+(* let transform str =
   let str = expr_mapper replace_hashhash_with_holes str in
-  loop_typer_untyper str
+  loop_typer_untyper str *)
+
+let transform (str : Ppxlib.Parsetree.structure) =
+  Ppxlib.Selected_ast.Of_ocaml.copy_structure
+  @@ loop_typer_untyper
+  @@ Ppxlib.Selected_ast.To_ocaml.copy_structure
+  @@ expr_mapper replace_hashhash_with_holes str
