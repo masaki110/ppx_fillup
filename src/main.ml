@@ -7,7 +7,7 @@ let hole =
     Ast_pattern.(pstr nil)
     (fun ~loc ~path:_ -> mkhole ~loc)
 
-(* open%fillup M --> module Dummy = M *)
+(* open%fillup M, open module as instances *)
 let open_instance_toplevel =
   Extension.declare "fillup" Extension.Context.structure_item
     Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
@@ -26,7 +26,7 @@ let open_instance_toplevel =
         pstr_loc = loc;
       })
 
-(* let open%fillup M in e --> let module Dummy = M in e  *)
+(* let open%fillup M in e, open module locally as instances *)
 let open_instance_local =
   Extension.declare "fillup" Extension.Context.expression
     Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
