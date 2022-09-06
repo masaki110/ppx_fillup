@@ -1,6 +1,35 @@
 open Parsetree
 open Util
 
+let check_attr_texpr texp txt =
+  Typedtree.(
+    let rec match_attrs acc texp = function
+      | [] -> None
+      | attr :: attrs ->
+          if attr.attr_name.txt = txt then
+            Some { texp with exp_attributes = acc @ attrs }
+          else match_attrs (attr :: acc) texp attrs
+    in
+    let rec match_extra acc texp = function
+      | [] -> None
+      | (ex, loc, attrs) :: rest ->
+          let rec loop acc' = function
+            | [] -> match_extra ((ex, loc, attrs) :: acc) texp rest
+            | attr' :: attrs' ->
+                if attr'.attr_name.txt = txt then
+                  Some
+                    {
+                      texp with
+                      exp_extra = ((ex, loc, acc' @ attrs') :: acc) @ rest;
+                    }
+                else loop (attr' :: acc') attrs
+          in
+          loop [] attrs
+    in
+    match match_attrs [] texp texp.exp_attributes with
+    | Some e -> Some e
+    | None -> match_extra [] texp texp.exp_extra)
+
 type id = Poly of int * Path.t | Mono of Path.t
 type instance = Path.t * Types.value_description
 
@@ -147,9 +176,3 @@ let replace_hashhash_with_holes (super : Ast_mapper.mapper)
 (* let transform str =
   let str = expr_mapper replace_hashhash_with_holes str in
   loop_typer_untyper str *)
-
-let transform (str : Ppxlib.Parsetree.structure) =
-  Ppxlib.Selected_ast.Of_ocaml.copy_structure
-  @@ loop_typer_untyper
-  @@ Ppxlib.Selected_ast.To_ocaml.copy_structure
-  @@ expr_mapper replace_hashhash_with_holes str

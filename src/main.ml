@@ -40,8 +40,14 @@ let open_instance_local =
         pexp_attributes = [];
       })
 
+let transform (str : Parsetree.structure) =
+  Selected_ast.Of_ocaml.copy_structure
+  @@ Fillup.loop_typer_untyper
+  @@ Selected_ast.To_ocaml.copy_structure
+  @@ expr_mapper Fillup.replace_hashhash_with_holes str
+
 let () =
   Driver.register_transformation
     ~extensions:[ hole; open_instance_toplevel; open_instance_local ]
-    ~instrument:(Driver.Instrument.make ~position:After Fillup.transform)
+    ~instrument:(Driver.Instrument.make ~position:After transform)
     "ppx_fillup"
