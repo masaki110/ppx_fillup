@@ -22,14 +22,13 @@ let (show_list [@instance]) =
 
 let test_show_polymorphic _ =
   assert_equal "Some 123" show ## (Some 123);
-  (* assert_equal "None" show ## None; *)
+  assert_equal "None" show ## (None : string option);
   assert_equal "123, 456, 789" show ## [ 123; 456; 789 ];
-  (* assert_equal "1.23, 4.56, 7.89" show ## []; *)
   assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
 
 module M = struct
   let (show_bool [@instance]) = string_of_bool
-  let (show_int2) = string_of_int
+  let show_int2 = string_of_int
 end
 
 let test_local_declearation _ =
@@ -47,15 +46,11 @@ let () =
   ()
 
 (* open module for_ppx_fillup *)
-module O = struct
-  module N = struct
-    let (show_bool2 [@instance]) = string_of_bool
-  end
+module N = struct
+  let (show_bool2 [@instance]) = string_of_bool
 end
 
 (* open%fillup M *)
-open O
-
 let () =
   let open%fillup N in
   print_endline @@ (show ## true);
@@ -68,7 +63,6 @@ let _ =
            "test show" >:: test_show;
            "test show polymorphic" >:: test_show_polymorphic;
            "test local declearation" >:: test_local_declearation
-           (* "test ppx_deriving" >:: test_ppx_deriving; *);
          ]
   in
   run_test_tt_main tests
