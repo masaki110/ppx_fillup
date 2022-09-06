@@ -50,9 +50,8 @@ let make_instances env =
     let mds env =
       Env.fold_modules
         (fun name _ md acc ->
-          if Str.(string_match (regexp "Fillup_dummy_module") name 0) then (
-            print_endline name;
-            md :: acc)
+          if Str.(string_match (regexp "Fillup_dummy_module") name 0) then
+            md :: acc
           else acc)
         None env []
     in
@@ -115,20 +114,18 @@ let search_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
   | Some texp -> fillup_hole texp
 
 let rec loop_typer_untyper =
-  let cnt = ref 0 in
   fun str ->
-    cnt := !cnt + 1;
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let tstr, _, _, _ = Typemod.type_structure env str in
     let str' = untyp_expr_mapper search_hole tstr in
-    if str = str' then (
+    if str = str' then
       let str' = expr_mapper alert_filled str' in
-      print_out
-      @@ Format.asprintf "%a" Pprintast.structure str'
-      ^ "\n\ntyping & untyping loop : "
-      ^ string_of_int !cnt;
-      str')
+      (* print_out
+         @@ Format.asprintf "%a" Pprintast.structure str'
+         ^ "\n\ntyping & untyping loop : "
+         ^ string_of_int !cnt; *)
+      str'
     else loop_typer_untyper str'
 
 let replace_hashhash_with_holes (super : Ast_mapper.mapper)
