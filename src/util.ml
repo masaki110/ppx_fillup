@@ -1,7 +1,7 @@
 type id = Poly of int * Path.t | Mono of Path.t
 type instance = Path.t * Types.value_description
 
-let mk_dummy_module =
+let mk_dummy_module_name =
   let cnt = ref 0 in
   fun () ->
     cnt := !cnt + 1;
@@ -17,6 +17,11 @@ let mkloc ~loc txt =
   { txt; loc }
 
 let mknoloc txt = mkloc ~loc:!Ast_helper.default_loc txt
+
+let attr_exists attrs txt =
+  List.exists
+    (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
+    attrs
 
 let open_instnce_attr_name = "open_instnce"
 
@@ -56,7 +61,7 @@ let lid_of_path path =
 let evar' ~loc ~attrs path =
   Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lid_of_path path
 
-open Parsetree
+open Ppxlib
 
 let mkhole =
   let cnt = ref 0 in
@@ -65,13 +70,7 @@ let mkhole =
     let typ = Ast_helper.Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
     [%expr (assert false : [%t typ]) [@HOLE]]
 
-let mkattr name ~loc =
-  { attr_name = mkloc ~loc name; attr_payload = PStr []; attr_loc = loc }
-
-let attr_exists attrs txt =
-  List.exists
-    (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
-    attrs
+let mkhole' ~loc = Selected_ast.To_ocaml.copy_expression @@ mkhole ~loc
 
 let match_attrs attrs txt =
   let rec loop acc = function
@@ -81,14 +80,3 @@ let match_attrs attrs txt =
         else loop (attr :: acc) attrs
   in
   loop [] attrs
-
-let check_attr_expr exp txt =
-  let rec loop acc = function
-    | [] -> None
-    | attr :: attrs ->
-        if attr.attr_name.txt = txt then
-          Some { exp with pexp_attributes = acc @ attrs }
-        else loop (attr :: acc) attrs
-  in
-  loop [] exp.pexp_attributes
-
