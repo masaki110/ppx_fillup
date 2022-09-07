@@ -73,14 +73,14 @@ module Typful = struct
 
   let rec match_instance env hole path inst =
     (* let inst = Ctype.repr @@ Ctype.expand_head env inst in *)
-    let inst : Types.type_expr = Compatibility.repr_type env inst in
-    match inst.desc with
+    let inst_desc : Types.type_desc = Compatibility.repr_type env inst in
+    match inst_desc with
     | Tarrow (_, _, ret, _) -> (
         if Compatibility.match_type env hole inst then Some (Mono path)
         else
           match match_instance env hole path ret with
-          | Some (Mono ident) -> Some (Poly (1, ident))
-          | Some (Poly (n, ident)) -> Some (Poly (n + 1, ident))
+          | Some (Mono ident) -> Some (Multi (1, ident))
+          | Some (Multi (n, ident)) -> Some (Multi (n + 1, ident))
           | None -> None)
     | _ -> if Compatibility.match_type env hole inst then Some (Mono path) else None
 
@@ -148,7 +148,7 @@ module Typful = struct
     in
     match resolve_instances texp with
     | [ Mono path ] -> evar' ~loc ~attrs path
-    | [ Poly (n, path) ] -> [%expr [%e apply_holes n @@ evar' ~loc ~attrs path]]
+    | [ Multi (n, path) ] -> [%expr [%e apply_holes n @@ evar' ~loc ~attrs path]]
     | _ :: _ ->
         Location.raise_errorf ~loc "ppx_fillup Error : Instance overlapped %a"
           Printtyp.type_expr texp.exp_type
@@ -165,7 +165,7 @@ module Typful = struct
   let rec loop_typer_untyper str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
-    let tstr, _, _, _ = Typemod.type_structure env str in
+    let tstr = Compatibility.type_structure env str in
     let str' = untyp_expr_mapper search_hole tstr in
     if str = str' then
       let str' = expr_mapper alert_filled str' in
