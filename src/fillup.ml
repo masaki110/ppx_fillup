@@ -73,7 +73,7 @@ module Typful = struct
 
   let rec match_instance env hole path inst =
     (* let inst = Ctype.repr @@ Ctype.expand_head env inst in *)
-    let inst = Compatibility.repr_type env inst in
+    let inst : Types.type_expr = Compatibility.repr_type env inst in
     match inst.desc with
     | Tarrow (_, _, ret, _) -> (
         if Compatibility.match_type env hole inst then Some (Mono path)
