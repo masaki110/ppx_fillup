@@ -71,17 +71,18 @@ module Typful = struct
       let loc = exp.pexp_loc in
       apply_holes (n - 1) [%expr [%e exp] [%e mkhole' ~loc]]
 
-  let rec match_instance env holety ident instty =
-    let instty = Ctype.repr @@ Ctype.expand_head env instty in
-    match instty.desc with
+  let rec match_instance env hole path inst =
+    (* let inst = Ctype.repr @@ Ctype.expand_head env inst in *)
+    let inst = Compatibility.repr_type env inst in
+    match inst.desc with
     | Tarrow (_, _, ret, _) -> (
-        if Ctype.matches env holety instty then Some (Mono ident)
+        if Compatibility.match_type env hole inst then Some (Mono path)
         else
-          match match_instance env holety ident ret with
+          match match_instance env hole path ret with
           | Some (Mono ident) -> Some (Poly (1, ident))
           | Some (Poly (n, ident)) -> Some (Poly (n + 1, ident))
           | None -> None)
-    | _ -> if Ctype.matches env holety instty then Some (Mono ident) else None
+    | _ -> if Compatibility.match_type env hole inst then Some (Mono path) else None
 
   let make_instances env =
     let md_values env =
@@ -124,8 +125,8 @@ module Typful = struct
 
   let resolve_instances (texp : Typedtree.expression) =
     let rec find_instances = function
-      | ((id, desc) : instance) :: rest -> (
-          match match_instance texp.exp_env texp.exp_type id desc.val_type with
+      | ((p, desc) : instance) :: rest -> (
+          match match_instance texp.exp_env texp.exp_type p desc.val_type with
           | Some i -> i :: find_instances rest
           | None -> find_instances rest)
       | [] -> []
@@ -196,7 +197,7 @@ module Typful = struct
      loop_typer_untyper str *)
 end
 
-module Untypful = struct
+module Typless = struct
   open Ppxlib
 
   class replace_hashhash_with_holes =
@@ -220,5 +221,5 @@ module Untypful = struct
     end
 end
 
-let replace_hashhash = (new Untypful.replace_hashhash_with_holes)#structure
+let replace_hashhash = (new Typless.replace_hashhash_with_holes)#structure
 let typer_untyper = Typful.loop_typer_untyper
