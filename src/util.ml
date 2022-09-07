@@ -1,4 +1,4 @@
-type id = Poly of int * Path.t | Mono of Path.t
+type path = Multi of int * Path.t | Mono of Path.t
 type instance = Path.t * Types.value_description
 
 let mk_dummy_module_name =
