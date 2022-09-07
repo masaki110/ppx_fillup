@@ -5,3 +5,9 @@
  (libraries ppxlib compiler-libs.common str)
  (preprocess
   (pps ppxlib.metaquot)))
+
+(rule
+ (targets compatibility.ml)
+ (deps compatibility.cppo.ml)
+ (action
+  (run %{bin:cppo} %{deps} -V OCAML:%{ocaml_version} -o %{targets})))
