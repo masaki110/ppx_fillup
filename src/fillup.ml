@@ -1,6 +1,6 @@
 open Util
 
-module Typful = struct
+module Typeful = struct
   open Parsetree
 
   let check_attr_texpr texp txt =
@@ -197,7 +197,7 @@ module Typful = struct
      loop_typer_untyper str *)
 end
 
-module Typless = struct
+module Typeless = struct
   open Ppxlib
 
   class replace_hashhash_with_holes =
@@ -221,5 +221,5 @@ module Typless = struct
     end
 end
 
-let replace_hashhash = (new Typless.replace_hashhash_with_holes)#structure
-let typer_untyper = Typful.loop_typer_untyper
+let replace_hashhash = (new Typeless.replace_hashhash_with_holes)#structure
+let typer_untyper = Typeful.loop_typer_untyper
