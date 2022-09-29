@@ -7,10 +7,10 @@ let mk_dummy_module_name =
     cnt := !cnt + 1;
     "Fillup_dummy_module" ^ string_of_int !cnt
 
-let print_out x =
+(* let print_out x =
   let out = open_out @@ "/tmp/fillup_out" in
   output_string out x;
-  close_out out
+  close_out out *)
 
 let mkloc ~loc txt =
   let open Ppxlib in
