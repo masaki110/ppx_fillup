@@ -10,4 +10,4 @@
  (targets compatibility.ml)
  (deps compatibility.cppo.ml)
  (action
-  (run %{bin:cppo} %{deps} -V OCAML:%{ocaml_version} -o %{targets})))
+  (run cppo %{deps} -V OCAML:%{ocaml_version} -o %{targets})))
