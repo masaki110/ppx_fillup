@@ -82,7 +82,9 @@ module Typeful = struct
           | Some (Mono ident) -> Some (Multi (1, ident))
           | Some (Multi (n, ident)) -> Some (Multi (n + 1, ident))
           | None -> None)
-    | _ -> if Compatibility.match_type env hole inst then Some (Mono path) else None
+    | _ ->
+        if Compatibility.match_type env hole inst then Some (Mono path)
+        else None
 
   let make_instances env =
     let md_values env =
@@ -114,7 +116,12 @@ module Typeful = struct
     let env_values env =
       Env.fold_values
         (fun _ path desc acc ->
-          if attr_exists desc.val_attributes "instance" then
+          if
+            desc.val_attributes
+            |> List.exists (fun attr ->
+                   attr.attr_name.txt = "instance"
+                   || attr.attr_name.txt = "inst")
+          then
             match path with
             | Pdot (_, s) -> (Path.Pident (Ident.create_local s), desc) :: acc
             | _ -> (path, desc) :: acc
@@ -148,7 +155,8 @@ module Typeful = struct
     in
     match resolve_instances texp with
     | [ Mono path ] -> evar' ~loc ~attrs path
-    | [ Multi (n, path) ] -> [%expr [%e apply_holes n @@ evar' ~loc ~attrs path]]
+    | [ Multi (n, path) ] ->
+        [%expr [%e apply_holes n @@ evar' ~loc ~attrs path]]
     | _ :: _ ->
         Location.raise_errorf ~loc "ppx_fillup Error : Instance overlapped %a"
           Printtyp.type_expr texp.exp_type
@@ -169,32 +177,8 @@ module Typeful = struct
     let str' = untyp_expr_mapper search_hole tstr in
     if str = str' then
       let str' = expr_mapper alert_filled str' in
-      (* print_out
-         @@ Format.asprintf "%a" Pprintast.structure str'
-         ^ "\n\ntyping & untyping loop : "
-         ^ string_of_int !cnt; *)
       str'
     else loop_typer_untyper str'
-
-  (* let replace_hashhash_with_holes (super : Ast_mapper.mapper)
-       (self : Ast_mapper.mapper) exp =
-     match exp.pexp_desc with
-     | Pexp_apply
-         ( {
-             pexp_desc = Pexp_ident { txt = Lident "##"; _ };
-             pexp_loc = loc_hole;
-             _;
-           },
-           [ (_, arg1); (_, arg2) ] ) ->
-         let loc = loc_hole in
-         Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
-           (self.expr self arg1)
-           [ (Nolabel, mkhole ~loc); (Nolabel, self.expr self arg2) ]
-     | _ -> super.expr self exp *)
-
-  (* let transform str =
-     let str = expr_mapper replace_hashhash_with_holes str in
-     loop_typer_untyper str *)
 end
 
 module Typeless = struct
@@ -206,14 +190,22 @@ module Typeless = struct
 
       method! expression exp =
         match exp.pexp_desc with
+        | Pexp_ident { txt = Lident "__"; loc } -> mkhole ~loc
+        (* | Pexp_apply
+            ( {
+                pexp_desc = Pexp_ident { txt = Lident "!!"; _ };
+                pexp_loc = loc;
+                _;
+              },
+              [ (_, [%expr 0]) ] ) ->
+            mkhole ~loc *)
         | Pexp_apply
             ( {
                 pexp_desc = Pexp_ident { txt = Lident "##"; _ };
-                pexp_loc = loc_hole;
+                pexp_loc = loc;
                 _;
               },
               [ (_, arg1); (_, arg2) ] ) ->
-            let loc = loc_hole in
             Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
               (this#expression arg1)
               [ (Nolabel, mkhole ~loc); (Nolabel, this#expression arg2) ]
