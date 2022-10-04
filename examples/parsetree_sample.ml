@@ -1,13 +1,13 @@
 [@@@warnerror "-22"]
+
 open Parsetree
 
 open%fillup Pprintast
 
 let loc = Location.none
-
 let println x = Format.printf "%a\n" x
 
-let () = 
+let () =
   println ## [%expr 1 + 2];
   println ## [%type: int];
-  println ## [%pat? (_, _)]
+  println ## [%pat? _, _]
