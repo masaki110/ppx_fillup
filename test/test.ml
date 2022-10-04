@@ -36,25 +36,17 @@ let test_local_declearation _ =
   assert_equal "true" @@ (show ## true);
   assert_equal "123" @@ (show ## 123)
 
-let (float_float [@instance]) = fun x : float -> x
-let (float_string [@instance]) = float_of_string
-let (float_int [@instance]) = float_of_int
-let add inst1 inst2 x y = inst1 x +. inst2 y
-
-let () =
-  print_float @@ add [%HOLE] [%HOLE] 4 "3";
+(* open module as instance of ppx_fillup *)
+let test_open_instances _ =
+  let open%fillup M in
+  assert_equal "true" @@ (show ## true);
+  (* assert_equal "false" @@ show show_bool false;  <- Error *)
   ()
 
-(* open module for_ppx_fillup *)
-module N = struct
-  let (show_bool2 [@instance]) = string_of_bool
-end
-
-(* open%fillup M *)
-let () =
-  let open%fillup N in
-  print_endline @@ (show ## true);
-  ()
+(* 3 or more arguments *)
+let test_more_args _ =
+  let pp_print_int[@inst] = Format.pp_print_int in
+  assert_equal "123" @@ Format.asprintf "%a" __ 123
 
 let _ =
   let tests =
@@ -62,7 +54,9 @@ let _ =
     >::: [
            "test show" >:: test_show;
            "test show polymorphic" >:: test_show_polymorphic;
-           "test local declearation" >:: test_local_declearation
+           "test local declearation" >:: test_local_declearation;
+           "test open module as instances" >:: test_open_instances;
+           "test 3 or more args" >:: test_more_args;
          ]
   in
   run_test_tt_main tests
