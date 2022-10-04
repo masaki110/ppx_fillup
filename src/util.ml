@@ -18,10 +18,10 @@ let mkloc ~loc txt =
 
 let mknoloc txt = mkloc ~loc:!Ast_helper.default_loc txt
 
-let attr_exists attrs txt =
+(* let attr_exists attrs txt =
   List.exists
     (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
-    attrs
+    attrs *)
 
 let open_instnce_attr_name = "open_instnce"
 
