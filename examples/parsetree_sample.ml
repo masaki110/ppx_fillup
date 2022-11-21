@@ -10,4 +10,5 @@ let println x = Format.printf "%a\n" x
 let () =
   println ## [%expr 1 + 2];
   println ## [%type: int];
-  println ## [%pat? _, _]
+  println ## [%pat? _, _];
+  Format.printf "%a\n" __ [%pat? _, _];
