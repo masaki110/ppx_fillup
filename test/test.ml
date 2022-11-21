@@ -37,16 +37,15 @@ let test_local_declearation _ =
   assert_equal "123" @@ (show ## 123)
 
 (* open module as instance of ppx_fillup *)
-let test_open_instances _ =
-  let open%fillup M in
-  assert_equal "true" @@ (show ## true);
-  (* assert_equal "false" @@ show show_bool false;  <- Error *)
-  ()
-
 (* 3 or more arguments *)
-let test_more_args _ =
-  let pp_print_int[@inst] = Format.pp_print_int in
-  assert_equal "123" @@ Format.asprintf "%a" __ 123
+open Parsetree
+
+open%fillup Pprintast
+
+let loc = Location.none
+
+let test_print_ast _ =
+  assert_equal "1 + 1" @@ show __ [%expr 1 + 1]
 
 let _ =
   let tests =
@@ -55,8 +54,7 @@ let _ =
            "test show" >:: test_show;
            "test show polymorphic" >:: test_show_polymorphic;
            "test local declearation" >:: test_local_declearation;
-           "test open module as instances" >:: test_open_instances;
-           "test 3 or more args" >:: test_more_args;
+           "test print AST" >:: test_print_ast;
          ]
   in
   run_test_tt_main tests
