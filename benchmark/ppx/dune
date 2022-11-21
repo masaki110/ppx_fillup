@@ -1,0 +1,13 @@
+(library
+ (name formatter_rewriter)
+ (kind ppx_rewriter)
+ (libraries ppxlib compiler-libs str)
+ (preprocess
+  (pps ppxlib.metaquot)))
+
+(rule
+ (targets compatibility.ml)
+ (deps ../../src/compatibility.cppo.ml)
+ (action
+  (run cppo %{deps} -V OCAML:%{ocaml_version} -o %{targets})))
+  
