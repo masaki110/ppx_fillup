@@ -1,0 +1,7 @@
+open Parsetree
+
+let loc = Location.none
+
+let () =
+  Format.printf "%a" Pprintast.expression [%expr 1 + 1];
+  Format.printf "%a" Pprintast.core_type [%type: int]
