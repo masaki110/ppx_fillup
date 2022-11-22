@@ -3,6 +3,7 @@
 open Parsetree
 
 open%fillup Pprintast
+open Pprintast
 
 let loc = Location.none
 let println x = Format.printf "%a\n" x

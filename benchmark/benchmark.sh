@@ -1,15 +1,16 @@
 # rewriter
-rewritedir="$1"
-find ./$rewritedir -name "*.ml" |
+dune build ./
+target="$1"
+find ./"$target" -name "*.ml" |
     while read -r fname; do
-        ./rewriter.exe -o /tmp.ml --impl $fname
-        cp /tmp.ml rewritedir2/$fname
+        dune exec --no-build ./rewriter.exe "$fname" > /tmp/tmp.ml
+        cp /tmp/tmp.ml "$fname"
     done
-rm /tmp.ml
+rm /tmp/tmp.ml
 
 # benchmark
-opam install $1 --deps-only;
+opam install ./"$target" --deps-only;
 benchmark(){
-    opam exec -- dune build
+    opam exec -- dune build ./"$target"
 }
 time $benchmark

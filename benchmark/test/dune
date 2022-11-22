@@ -1,0 +1,5 @@
+(executable
+ (name test)
+ (libraries ppxlib)
+ (preprocess
+  (staged_pps ppxlib.metaquot ppx_fillup)))

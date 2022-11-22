@@ -1,7 +1,9 @@
 open Ppxlib
 
+let ppastflag = ref true
+let pplist = ref []
+
 class replace_pp =
-  let pp = ref "" in
   object (this)
     inherit Ppxlib.Ast_traverse.map as super
 
@@ -20,6 +22,7 @@ class replace_pp =
                  } as arg2) );
               (lbl3, arg3);
             ] ) ->
+          ppastflag := false;
           Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
             (this#expression func)
             [
@@ -33,18 +36,18 @@ class replace_pp =
           ( func,
             [
               ( lbl1,
-                ({
-                   pexp_desc = Pexp_constant (Pconst_string (txt, _, _));
-                   pexp_loc = loc;
-                   _;
-                 } as arg1) );
-              (lbl2, arg2);
+                ({ pexp_desc = Pexp_constant (Pconst_string (text, _, _)); _ }
+                as arg1) );
+              ( lbl2,
+                ({ pexp_desc = Pexp_ident { txt = id; _ }; pexp_loc = loc; _ }
+                as arg2) );
               (lbl3, arg3);
             ] )
-        when (try Str.(search_forward (regexp "%a") txt 0)
+        when (try Str.(search_forward (regexp "%a") text 0)
               with Not_found -> -1)
-             >= 0 ->
-          pp := txt;
+             >= 0
+             && Longident.name id != "__" ->
+          pplist := Longident.name id :: !pplist;
           Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
             (this#expression func)
             [
@@ -62,14 +65,13 @@ class replace_pp =
           ( flag,
             [
               ({
-                 pvb_pat =
-                   { ppat_desc = Ppat_constant (Pconst_string (txt, _, _)); _ };
+                 pvb_pat = { ppat_desc = Ppat_var { txt = name; _ }; _ };
                  pvb_attributes = attrs;
                  pvb_loc = loc;
                  _;
                } as vb);
             ] )
-        when txt = !pp ->
+        when List.mem name !pplist ->
           {
             stri with
             pstr_desc =
@@ -80,7 +82,7 @@ class replace_pp =
                       vb with
                       pvb_attributes =
                         {
-                          attr_name = { txt = !pp; loc };
+                          attr_name = { txt = "instance"; loc };
                           attr_payload = PStr [];
                           attr_loc = loc;
                         }
@@ -91,7 +93,7 @@ class replace_pp =
       | _ -> super#structure_item stri
   end
 
-let add_open ~loc md_name =
+let open_fillup ~loc md_name =
   {
     pstr_desc =
       Pstr_extension
@@ -116,15 +118,15 @@ let add_open ~loc md_name =
                 };
               ] ),
           [] );
-    pstr_loc = Location.none;
+    pstr_loc = loc;
   }
 
 let transform (str : Parsetree.structure) =
-  match str with
-  | stri :: _ ->
-      let open_inst = add_open ~loc:Location.none "Pprintast" in
-      if stri != open_inst then open_inst :: (new replace_pp)#structure str
-      else (new replace_pp)#structure str
-  | [] -> []
+  let open_inst = open_fillup ~loc:Location.none "Pprintast" in
+  let str' = (new replace_pp)#structure @@ (new replace_pp)#structure str in
+  let str' =
+    if List.mem open_inst str || !ppastflag then str' else open_inst :: str'
+  in
+  str'
 
 let () = Driver.register_transformation ~impl:transform "ppx_fillup"
