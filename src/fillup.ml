@@ -69,7 +69,7 @@ module Typeful = struct
     if n = 0 then exp
     else
       let loc = exp.pexp_loc in
-      apply_holes (n - 1) [%expr [%e exp] [%e mkhole' ~loc]]
+      apply_holes (n - 1) @@ to_exp ([%expr [%e of_exp exp] [%e of_exp (mkhole' ~loc)]])
 
   let rec match_instance env hole path inst =
     (* let inst = Ctype.repr @@ Ctype.expand_head env inst in *)
@@ -156,7 +156,7 @@ module Typeful = struct
     match resolve_instances texp with
     | [ Mono path ] -> evar' ~loc ~attrs path
     | [ Multi (n, path) ] ->
-        [%expr [%e apply_holes n @@ evar' ~loc ~attrs path]]
+        to_exp [%expr [%e of_exp @@ apply_holes n @@ evar' ~loc ~attrs path]]
     | _ :: _ ->
         Location.raise_errorf ~loc "ppx_fillup Error : Instance overlapped %a"
           Printtyp.type_expr texp.exp_type
