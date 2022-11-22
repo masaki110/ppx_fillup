@@ -63,6 +63,9 @@ let evar' ~loc ~attrs path =
 
 open Ppxlib
 
+let to_exp = Selected_ast.To_ocaml.copy_expression
+let of_exp = Selected_ast.Of_ocaml.copy_expression
+
 let mkhole =
   let cnt = ref 0 in
   fun ~loc ->
