@@ -1,6 +1,6 @@
 # ppx_fillup
 
-_ppx_fillup_ はOCamlでアドホック多相を実現するためのライブラリです。
+_ppx_fillup_ is a library for ad-hoc polymorphism in OCaml.
 
 <!-- ## Installation
 Prepare _ppx_fillup_ in the project. -->
@@ -8,7 +8,6 @@ Prepare _ppx_fillup_ in the project. -->
 ## Buildsystem integration
 
 With Dune, you should add a preprocess directive to your target:
-ppx_fillup ファイルのDune を利用して、
 
 ```dune 
 (executable
