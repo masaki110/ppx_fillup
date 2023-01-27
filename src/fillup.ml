@@ -69,29 +69,36 @@ module Typeful = struct
     if n = 0 then exp
     else
       let loc = exp.pexp_loc in
-      apply_holes (n - 1) @@ to_exp ([%expr [%e of_exp exp] [%e of_exp (mkhole' ~loc)]])
+      apply_holes (n - 1)
+      @@ to_exp [%expr [%e of_exp exp] [%e of_exp (mkhole' ~loc)]]
 
   let rec match_instance env hole path inst =
-    (* let inst = Ctype.repr @@ Ctype.expand_head env inst in *)
-    let inst_desc : Types.type_desc = Compatibility.repr_type env inst in
-    match inst_desc with
+    let inst_tdesc : Types.type_desc = Compatibility.repr_type env inst in
+    match inst_tdesc with
     | Tarrow (_, _, ret, _) -> (
-        if Compatibility.match_type env hole inst then Some (Mono path)
+        if
+          (* prerr_endline (Path.name path); *)
+          Compatibility.match_type env hole inst
+        then (* prerr_endline "true\n"; *)
+          Some (Mono path)
         else
           match match_instance env hole path ret with
-          | Some (Mono ident) -> Some (Multi (1, ident))
-          | Some (Multi (n, ident)) -> Some (Multi (n + 1, ident))
+          | Some (Mono p) -> Some (Multi (1, p))
+          | Some (Multi (n, p)) -> Some (Multi (n + 1, p))
           | None -> None)
     | _ ->
-        if Compatibility.match_type env hole inst then Some (Mono path)
-        else None
+        if Compatibility.match_type env hole inst then
+          (* prerr_endline "true\n"; *)
+          Some (Mono path)
+        else (* prerr_endline "false\n"; *)
+          None
 
   let make_instances env =
     let md_values env =
       let mds env =
         Env.fold_modules
           (fun name _ md acc ->
-            if Str.(string_match (regexp "Fillup_dummy_module") name 0) then
+            if Str.(string_match (regexp "Dummy_module_fillup") name 0) then
               md :: acc
             else acc)
           None env []
@@ -133,8 +140,11 @@ module Typeful = struct
   let resolve_instances (texp : Typedtree.expression) =
     let rec find_instances = function
       | ((p, desc) : instance) :: rest -> (
+          (* print_endline
+             @@ Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr
+                  desc.val_type; *)
           match match_instance texp.exp_env texp.exp_type p desc.val_type with
-          | Some i -> i :: find_instances rest
+          | Some p -> (p, desc.val_type) :: find_instances rest
           | None -> find_instances rest)
       | [] -> []
     in
@@ -153,15 +163,24 @@ module Typeful = struct
       }
       :: texp.exp_attributes
     in
+    (* print_endline @@ Format.asprintf "%a" Printtyp.type_expr texp.exp_type; *)
     match resolve_instances texp with
-    | [ Mono path ] -> evar' ~loc ~attrs path
-    | [ Multi (n, path) ] ->
-        to_exp [%expr [%e of_exp @@ apply_holes n @@ evar' ~loc ~attrs path]]
-    | _ :: _ ->
-        Location.raise_errorf ~loc "ppx_fillup Error : Instance overlapped %a"
-          Printtyp.type_expr texp.exp_type
+    | [ (Mono p, _) ] -> evar' ~loc ~attrs p
+    | [ (Multi (n, p), _) ] ->
+        to_exp [%expr [%e of_exp @@ apply_holes n @@ evar' ~loc ~attrs p]]
+    | _ :: _ as xs ->
+        let rec show_path_list = function
+          | (p, t) :: ps ->
+              Format.asprintf "%s : %a" (show_path p) Printtyp.type_expr t
+              ^ ",\n"
+              ^ show_path_list ps
+          | [] -> "nil"
+        in
+        Location.raise_errorf ~loc
+          "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
+          texp.exp_type (show_path_list xs)
     | [] ->
-        Location.raise_errorf ~loc "ppx_fillup Error : Instance not found %a"
+        Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
           Printtyp.type_expr texp.exp_type
 
   let search_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
@@ -191,14 +210,6 @@ module Typeless = struct
       method! expression exp =
         match exp.pexp_desc with
         | Pexp_ident { txt = Lident "__"; loc } -> mkhole ~loc
-        (* | Pexp_apply
-            ( {
-                pexp_desc = Pexp_ident { txt = Lident "!!"; _ };
-                pexp_loc = loc;
-                _;
-              },
-              [ (_, [%expr 0]) ] ) ->
-            mkhole ~loc *)
         | Pexp_apply
             ( {
                 pexp_desc = Pexp_ident { txt = Lident "##"; _ };

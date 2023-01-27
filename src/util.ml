@@ -1,16 +1,19 @@
 type path = Multi of int * Path.t | Mono of Path.t
+
+let show_path = function Multi (_, p) -> Path.name p | Mono p -> Path.name p
+
 type instance = Path.t * Types.value_description
 
-let mk_dummy_module_name =
+let mk_dummy_md_name =
   let cnt = ref 0 in
   fun () ->
     cnt := !cnt + 1;
-    "Fillup_dummy_module" ^ string_of_int !cnt
+    "Dummy_module_fillup" ^ string_of_int !cnt
 
 (* let print_out x =
-  let out = open_out @@ "/tmp/fillup_out" in
-  output_string out x;
-  close_out out *)
+   let out = open_out @@ "/tmp/fillup_out" in
+   output_string out x;
+   close_out out *)
 
 let mkloc ~loc txt =
   let open Ppxlib in
@@ -19,9 +22,9 @@ let mkloc ~loc txt =
 let mknoloc txt = mkloc ~loc:!Ast_helper.default_loc txt
 
 (* let attr_exists attrs txt =
-  List.exists
-    (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
-    attrs *)
+   List.exists
+     (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
+     attrs *)
 
 let open_instnce_attr_name = "open_instnce"
 
