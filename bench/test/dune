@@ -2,4 +2,4 @@
  (name test)
  (libraries ppxlib)
  (preprocess
-  (staged_pps ppxlib.metaquot ppx_fillup)))
+  (staged_pps ppx_fillup ppxlib.metaquot)))

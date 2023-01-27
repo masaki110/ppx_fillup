@@ -1,5 +1,5 @@
 (library
- (name formatter_rewriter)
+ (name pp_rewriter)
  (kind ppx_rewriter)
  (libraries ppxlib compiler-libs str)
  (preprocess
@@ -10,4 +10,3 @@
  (deps ../../src/compatibility.cppo.ml)
  (action
   (run cppo %{deps} -V OCAML:%{ocaml_version} -o %{targets})))
-  
