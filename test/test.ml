@@ -43,9 +43,17 @@ open Parsetree
 open%fillup Pprintast
 
 let loc = Location.none
+let test_print_ast _ = assert_equal "1 + 1" @@ show __ [%expr 1 + 1]
 
-let test_print_ast _ =
-  assert_equal "1 + 1" @@ show __ [%expr 1 + 1]
+(* open some of expressions in module as instance of ppx_fillup *)
+module Show = struct
+  let show_int = string_of_int
+  let show_bool = string_of_bool
+end
+
+[%%open_inst Show show_bool]
+
+let test_open_inst _ = assert_equal "true" @@ show __ true
 
 let _ =
   let tests =
@@ -55,6 +63,7 @@ let _ =
            "test show polymorphic" >:: test_show_polymorphic;
            "test local declearation" >:: test_local_declearation;
            "test print AST" >:: test_print_ast;
+           "test expressions in module" >:: test_open_inst;
          ]
   in
   run_test_tt_main tests

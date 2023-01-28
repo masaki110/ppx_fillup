@@ -2,6 +2,13 @@ type path = Multi of int * Path.t | Mono of Path.t
 
 let show_path = function Multi (_, p) -> Path.name p | Mono p -> Path.name p
 
+let rec show_path_list = function
+  | (p, t) :: ps ->
+      Format.asprintf "%s : %a" (show_path p) Printtyp.type_expr t
+      ^ ",\n"
+      ^ show_path_list ps
+  | [] -> "nil"
+
 type instance = Path.t * Types.value_description
 
 let mk_dummy_md_name =

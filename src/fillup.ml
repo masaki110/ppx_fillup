@@ -169,13 +169,6 @@ module Typeful = struct
     | [ (Multi (n, p), _) ] ->
         to_exp [%expr [%e of_exp @@ apply_holes n @@ evar' ~loc ~attrs p]]
     | _ :: _ as xs ->
-        let rec show_path_list = function
-          | (p, t) :: ps ->
-              Format.asprintf "%s : %a" (show_path p) Printtyp.type_expr t
-              ^ ",\n"
-              ^ show_path_list ps
-          | [] -> "nil"
-        in
         Location.raise_errorf ~loc
           "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
           texp.exp_type (show_path_list xs)
@@ -196,6 +189,7 @@ module Typeful = struct
     let str' = untyp_expr_mapper search_hole tstr in
     if str = str' then
       let str' = expr_mapper alert_filled str' in
+      (* prerr_endline @@ "output:\n" ^ Pprintast.string_of_structure str'; *)
       str'
     else loop_typer_untyper str'
 end

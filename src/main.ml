@@ -40,10 +40,10 @@ let open_instance_local =
         pexp_attributes = [];
       })
 
-(* [%%fillup_open M(a,b,c)], open expressions (a,b,c) in module M as instances *)
-let open_expression =
+(* [%%open_inst M(a,b,c)], open expressions (a,b,c) in module M as instances *)
+let open_instance =
   let open Ppxlib.Ast_helper in
-  Extension.declare "fillup_open" Extension.Context.structure_item
+  Extension.declare "open_inst" Extension.Context.structure_item
     Ast_pattern.(pstr @@ pstr_eval (pexp_construct __ __) nil ^:: nil)
     (fun ~loc ~path:_ lid expop ->
       (* let md_lid_loc = mkloc ~loc lid in *)
@@ -85,6 +85,7 @@ let transform (str : Parsetree.structure) =
 
 let () =
   Driver.register_transformation
-    ~extensions:[ hole; open_instance_toplevel; open_instance_local ]
+    ~extensions:
+      [ hole; open_instance_toplevel; open_instance_local; open_instance ]
     ~instrument:(Driver.Instrument.make ~position:After transform)
     "ppx_fillup"
