@@ -42,46 +42,51 @@ let open_instance_local =
 
 (* [%%open_inst M(a,b,c)], open expressions (a,b,c) in module M as instances *)
 let open_instance =
-  let open Ppxlib.Ast_helper in
   Extension.declare "open_inst" Extension.Context.structure_item
     Ast_pattern.(pstr @@ pstr_eval (pexp_construct __ __) nil ^:: nil)
     (fun ~loc ~path:_ lid expop ->
-      (* let md_lid_loc = mkloc ~loc lid in *)
-      let expop_of_str = function
+      let open Ppxlib.Ast_helper in
+      let open Longident in
+      let err ~loc =
+        Location.raise_errorf ~loc "(ppx_fillup) Invalid syntax: %a"
+          Pprintast.expression
+          (Ast_helper.Exp.construct (mkloc ~loc lid) expop)
+      in
+      let str_of_construct ~loc lid = function
         | Some { pexp_desc = Pexp_tuple l; _ } ->
             let rec loop acc = function
               | { pexp_desc = Pexp_ident lid_loc; _ } :: rest ->
                   rest
                   |> loop
-                     @@ (Str.eval
+                       ((Str.eval
                         @@ Exp.ident
-                        @@ mkloc ~loc
-                        @@ Ldot (lid, Longident.name lid_loc.txt))
-                        :: acc
+                        @@ mkloc ~loc (Ldot (lid, name lid_loc.txt)))
+                       :: acc)
               | [] -> acc
-              | _ -> assert false
+              | _ -> err ~loc
             in
             loop [] l
-        | Some { pexp_desc = Pexp_ident lid_loc; _ } ->
-            [
-              Str.eval
-              @@ Exp.ident
-              @@ mkloc ~loc
-              @@ Ldot (lid, Longident.name lid_loc.txt);
-            ]
-        | None -> []
-        | Some _ ->
-            Location.raise_errorf ~loc "(ppx_fillup) Invalid syntax: %s %a"
-              (Longident.name lid) Pprintast.expression (Option.get expop)
+        | Some { pexp_desc = Pexp_ident lid'; _ } ->
+            [ Str.eval @@ Exp.ident @@ mkloc ~loc (Ldot (lid, name lid'.txt)) ]
+        | _ -> err ~loc
       in
       let dummy_md_name = mkloc ~loc @@ Some (mk_dummy_md_name ()) in
-      Str.module_ @@ Mb.mk dummy_md_name @@ Mod.structure (expop_of_str expop))
+      let stri =
+        Str.module_ ~loc
+        @@ Mb.mk ~loc dummy_md_name
+        @@ Mod.structure ~loc (str_of_construct ~loc lid expop)
+      in
+      prerr_endline @@ Pprintast.string_of_structure [ stri ];
+      stri)
 
 let transform (str : Parsetree.structure) =
-  Fillup.replace_hashhash str
-  |> Selected_ast.To_ocaml.copy_structure
-  |> Fillup.typer_untyper
-  |> Selected_ast.Of_ocaml.copy_structure
+  if Ocaml_common.Ast_mapper.tool_name () = "ocamldep" then
+    Fillup.replace_hashhash str
+  else
+    Fillup.replace_hashhash str
+    |> Selected_ast.To_ocaml.copy_structure
+    |> Fillup.typer_untyper
+    |> Selected_ast.Of_ocaml.copy_structure
 
 let () =
   Driver.register_transformation
