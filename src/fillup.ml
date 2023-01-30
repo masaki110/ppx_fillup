@@ -72,30 +72,37 @@ module Typeful = struct
       apply_holes (n - 1)
       @@ to_exp [%expr [%e of_exp exp] [%e of_exp (mkhole' ~loc)]]
 
-  let rec match_instance env hole path inst =
-    let inst_tdesc : Types.type_desc = Compatibility.repr_type env inst in
-    match inst_tdesc with
-    | Tarrow (_, _, ret, _) -> (
-        if
-          (* prerr_endline (Path.name path); *)
-          Compatibility.match_type env hole inst
-        then (* prerr_endline "true\n"; *)
-          Some (Mono path)
-        else
-          match match_instance env hole path ret with
-          | Some (Mono p) -> Some (Multi (1, p))
-          | Some (Multi (n, p)) -> Some (Multi (n + 1, p))
-          | None -> None)
-    | _ ->
-        if Compatibility.match_type env hole inst then
-          (* prerr_endline "true\n"; *)
-          Some (Mono path)
-        else (* prerr_endline "false\n"; *)
-          None
+  let match_instance env hole inst =
+    match inst with
+    | Mul (p, tdesc) -> begin
+        let rec loop path tdesc =
+          let inst_desc : Types.type_desc = Compatibility.repr_type env tdesc in
+          match inst_desc with
+          | Tarrow (_, _, ret, _) -> (
+              if
+                (* prerr_endline (Path.name path); *)
+                Compatibility.match_type env hole tdesc
+              then Some { level = 0; current_path = path }
+              else
+                match loop path ret with
+                | Some inst -> Some { inst with level = inst.level + 1 }
+                | None -> None)
+          | _ ->
+              if Compatibility.match_type env hole tdesc then
+                Some { level = 0; current_path = path }
+              else None
+        in
+        match loop p.current_path tdesc.val_type with
+        | Some lp -> Some (Mul (lp, tdesc))
+        | None -> None
+      end
+    | Sin (_, tdesc) ->
+        if Compatibility.match_type env hole tdesc.val_type then Some inst
+        else None
 
   let make_instances env =
     let md_values env =
-      let mds env =
+      let dummy_md env =
         Env.fold_modules
           (fun name _ md acc ->
             if Str.(string_match (regexp "Dummy_module_fillup") name 0) then
@@ -103,52 +110,70 @@ module Typeful = struct
             else acc)
           None env []
       in
-      let rec str_items path md =
+      let resolve_dummy_md md =
+        let rec search_sg path expop md =
+          match expop with
+          | None -> begin
+              match md.Types.md_type with
+              | Mty_signature sg ->
+                  List.fold_left
+                    (fun acc -> function
+                      | Types.Sig_value (ident, desc, _) ->
+                          Sin (Path.Pdot (path, Ident.name ident), desc) :: acc
+                      | _ -> acc)
+                    [] sg
+              | Mty_alias p -> search_sg p None (Env.find_module p env)
+              | _ -> []
+            end
+          | Some name -> begin
+              match md.Types.md_type with
+              | Mty_signature sg ->
+                  List.fold_left
+                    (fun acc -> function
+                      | Types.Sig_value (ident, desc, _)
+                        when Ident.name ident = name ->
+                          Sin (Path.Pdot (path, Ident.name ident), desc) :: acc
+                      | _ -> acc)
+                    [] sg
+              | Mty_alias p -> search_sg p (Some name) (Env.find_module p env)
+              | _ -> []
+            end
+        in
         match md.Types.md_type with
-        | Mty_signature sg ->
-            List.fold_left
-              (fun acc -> function
-                | Types.Sig_value (ident, desc, _) -> begin
-                    match path with
-                    | None -> (Path.Pident ident, desc) :: acc
-                    | Some p -> (Path.Pdot (p, Ident.name ident), desc) :: acc
-                  end
-                | _ -> acc)
-              [] sg
-        | Mty_alias p -> str_items (Some p) (Env.find_module p env)
-        | Mty_functor _ | Mty_ident _ -> []
+        | Mty_alias p -> search_sg p None (Env.find_module p env)
+        | _ -> []
       in
-      List.concat @@ List.map (str_items None) (mds env)
+      List.concat @@ List.map resolve_dummy_md (dummy_md env)
     in
     let env_values env =
       Env.fold_values
         (fun _ path desc acc ->
           if
             desc.val_attributes
+            |> List.exists (fun attr -> attr.attr_name.txt = "instance")
+          then Sin (path, desc) :: acc
+          else if
+            desc.val_attributes
             |> List.exists (fun attr ->
-                   attr.attr_name.txt = "instance"
-                   || attr.attr_name.txt = "inst")
-          then
-            match path with
-            | Pdot (_, s) -> (Path.Pident (Ident.create_local s), desc) :: acc
-            | _ -> (path, desc) :: acc
+                   attr.attr_name.txt = "instance_with_context")
+          then Mul ({ level = 0; current_path = path }, desc) :: acc
           else acc)
         None env []
     in
     env_values env @ md_values env
 
   let resolve_instances (texp : Typedtree.expression) =
-    let rec find_instances = function
-      | ((p, desc) : instance) :: rest -> (
+    let rec loop = function
+      | (inst : instance) :: rest -> (
           (* print_endline
              @@ Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr
                   desc.val_type; *)
-          match match_instance texp.exp_env texp.exp_type p desc.val_type with
-          | Some p -> (p, desc.val_type) :: find_instances rest
-          | None -> find_instances rest)
+          match match_instance texp.exp_env texp.exp_type inst with
+          | Some i -> i :: loop rest
+          | None -> loop rest)
       | [] -> []
     in
-    find_instances (make_instances texp.exp_env)
+    loop (make_instances texp.exp_env)
 
   let mkattr name ~loc =
     { attr_name = mkloc ~loc name; attr_payload = PStr []; attr_loc = loc }
@@ -163,15 +188,20 @@ module Typeful = struct
       }
       :: texp.exp_attributes
     in
-    (* print_endline @@ Format.asprintf "%a" Printtyp.type_expr texp.exp_type; *)
+    (* prerr_endline @@ Format.asprintf "%a" Printtyp.type_expr texp.exp_type; *)
     match resolve_instances texp with
-    | [ (Mono p, _) ] -> evar' ~loc ~attrs p
-    | [ (Multi (n, p), _) ] ->
-        to_exp [%expr [%e of_exp @@ apply_holes n @@ evar' ~loc ~attrs p]]
-    | _ :: _ as xs ->
+    | [ Sin (p, _) ] -> evar' ~loc ~attrs p
+    | [ Mul (lp, _) ] ->
+        to_exp
+          [%expr
+            [%e
+              of_exp
+              @@ apply_holes lp.level
+              @@ evar' ~loc ~attrs lp.current_path]]
+    | _ :: _ as l ->
         Location.raise_errorf ~loc
           "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
-          texp.exp_type (show_path_list xs)
+          texp.exp_type (show_instances l)
     | [] ->
         Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
           Printtyp.type_expr texp.exp_type
@@ -188,9 +218,8 @@ module Typeful = struct
     let tstr = Compatibility.type_structure env str in
     let str' = untyp_expr_mapper search_hole tstr in
     if str = str' then
-      let str' = expr_mapper alert_filled str' in
-      (* prerr_endline @@ "output:\n" ^ Pprintast.string_of_structure str'; *)
-      str'
+      (* prerr_endline @@ Pprintast.string_of_structure str'; *)
+      expr_mapper alert_filled str'
     else loop_typer_untyper str'
 end
 
