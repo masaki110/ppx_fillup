@@ -1,15 +1,27 @@
-type path = Multi of int * Path.t | Mono of Path.t
+(* type path = Multi of int * Path.t | Mono of Path.t *)
+type lpath = { level : int; current_path : Path.t }
 
-let show_path = function Multi (_, p) -> Path.name p | Mono p -> Path.name p
+type instance =
+  | Sin of (Path.t * Types.value_description)
+  | Mul of (lpath * Types.value_description)
 
-let rec show_path_list = function
-  | (p, t) :: ps ->
-      Format.asprintf "%s : %a" (show_path p) Printtyp.type_expr t
-      ^ ",\n"
-      ^ show_path_list ps
-  | [] -> "nil"
-
-type instance = Path.t * Types.value_description
+let show_instances l =
+  let show_instance inst =
+    let lpath_name p = Path.name p.current_path in
+    match inst with
+    | Sin (p, vdesc) ->
+        Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr
+          vdesc.val_type
+    | Mul (p, vdesc) ->
+        Format.asprintf "%s : %a" (lpath_name p) Printtyp.type_expr
+          vdesc.val_type
+  in
+  let rec loop acc = function
+    | [] -> "[]"
+    | [ i ] -> show_instance i ^ " ]"
+    | i :: rest -> loop (acc ^ show_instance i ^ ",\n  ") rest
+  in
+  loop "[ " l
 
 let mk_dummy_md_name =
   let cnt = ref 0 in
@@ -33,7 +45,7 @@ let mknoloc txt = mkloc ~loc:!Ast_helper.default_loc txt
      (fun (attr : Parsetree.attribute) -> attr.attr_name.txt = txt)
      attrs *)
 
-let open_instnce_attr_name = "open_instnce"
+let open_instnce_attr_name = "open_instance"
 
 let open_instnce_attr =
   Parsetree.(
@@ -74,6 +86,7 @@ let evar' ~loc ~attrs path =
 open Ppxlib
 
 let to_exp = Selected_ast.To_ocaml.copy_expression
+
 let of_exp = Selected_ast.Of_ocaml.copy_expression
 
 let mkhole =
