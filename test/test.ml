@@ -4,15 +4,15 @@
 open OUnit2
 
 (* Show *)
-let show inst (v : 'a) = inst v
-let (show_int [@instance]) = string_of_int
-let (show_float [@instance]) = string_of_float
-let (show_string [@instance]) = fun x : string -> x
+module Show = struct
+  type msg = Msg of string
 
-let test_show _ =
-  assert_equal "123" show ## 123;
-  assert_equal "1.23" show ## 1.23;
-  assert_equal "abc" show ## "abc"
+  let show_int = string_of_int
+  let show_float = string_of_float
+  let show_string x : string = x
+  let show_bool = string_of_bool
+  let show_msg = function Msg x -> x
+end
 
 let (show_option [@instance_with_context]) =
  fun inst -> function None -> "None" | Some i -> "Some " ^ inst i
@@ -20,72 +20,58 @@ let (show_option [@instance_with_context]) =
 let (show_list [@instance_with_context]) =
  fun inst xs -> String.concat ", " (List.map inst xs)
 
-let test_show_polymorphic _ =
+let show inst (v : 'a) = inst v
+let (msg [@instance]) = Show.show_msg
+
+let test_show _ =
+  let open%fillup Show in
+  let msg = Show.(Msg "msg") in
+
+  assert_equal "123" show ## 123;
+  assert_equal "1.23" show ## 1.23;
+  assert_equal "abc" show ## "abc";
+  assert_equal "true" show ## true;
+
   assert_equal "Some 123" show ## (Some 123);
   assert_equal "None" show ## (None : string option);
   assert_equal "123, 456, 789" show ## [ 123; 456; 789 ];
-  assert_equal "1.23, 4.56, 7.89" show ## [ [ 1.23; 4.56 ]; [ 7.89 ] ]
+  assert_equal "1.23, 4.56, 7.89" show ## [ [ 1.23; 4.56 ]; [ 7.89 ] ];
+  assert_equal "msg" show##msg;
+  ()
 
-module M = struct
-  let (show_bool [@instance]) = string_of_bool
-  let show_int2 = string_of_int
-end
-
-let test_local_declearation _ =
-  let open! M in
-  assert_equal "true" @@ (show ## true);
-  assert_equal "123" @@ (show ## 123)
-
-(* open module as instance of ppx_fillup *)
 (* 3 or more arguments *)
-open! Parsetree
-
-open%fillup Pprintast
-
-let loc = Location.none
-
+(* print AST *)
 let test_print_ast _ =
-  assert_equal "1 + 1" @@ show __ [%expr 1 + 1];
+  let open Parsetree in
+  let open%fillup Ppxlib.Pprintast in
+  let loc = Location.none in
+  assert_equal "1 + 1" show ## [%expr 1 + 1];
+  assert_equal "42 : int" (Format.asprintf "%d : %a" 42 __ [%type: int]);
   ()
 
 (* add *)
-let add inst x y = inst x y
-let (add_int [@instance]) = fun x y -> x + y
-let (add_float [@instance]) = fun x y -> x +. y
-
-let test_add _ =
-  (* assert_equal 579 @@ add __ 123 456;
-     assert_equal 5.79 @@ add __ 1.23 4.56; *)
-  ()
-
-(* open some of expressions in module as instance of ppx_fillup *)
-module Show = struct
-  type t = Msg of string
-
-  let show_int = string_of_int
-  let show_bool = string_of_bool
-  let show_msg = function Msg x -> x
+module Add = struct
+  let add_int x y = x + y
+  let add_float x y = x +. y
+  let add_string x y = x ^ y
 end
 
-(* [%%open_inst Show show_bool] *)
-open%fillup Show
+let add inst x y = inst x y
 
-let test_open_inst _ =
-  (* assert_equal "true" @@ show __ true; *)
-  let x = Show.(Msg "msg") in
-  assert_equal "msg" @@ show __ x;
+let test_add _ =
+  let open%fillup Add in
+  assert_equal (123 + 456) (add __ 123 456);
+  assert_equal (1.23 +. 4.56) (add __ 1.23 4.56);
+  assert_equal ("foo" ^ "bar") (add __ "foo" "bar");
   ()
 
 let _ =
   let tests =
     "Test fillup"
     >::: [
-           "test show" >:: test_show;
-           "test show polymorphic" >:: test_show_polymorphic;
-           "test add" >:: test_add;
-           "test local declearation" >:: test_local_declearation;
-           "test print AST" >:: test_print_ast;
-           "test expressions in module" >:: test_open_inst;
+           " show" >:: test_show;
+           " print Ast" >:: test_print_ast;
+           " add" >:: test_add;
          ]
   in
   run_test_tt_main tests
