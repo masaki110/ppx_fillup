@@ -9,4 +9,5 @@
    (and
     (>= 0.19.0)
     (< 0.27.0)))
-  ocaml-compiler-libs))
+  ocaml-compiler-libs
+  str))
