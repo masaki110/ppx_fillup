@@ -17,7 +17,7 @@ Dune を利用する場合、 以下のように`preprocess`に`staged_pps`と�
 
 ### 例：Show関数
 
-1.関数の用意
+1. 関数の用意
 
     引数`x`をstring型に変換する関数`show`を以下のように定義します。
 
