@@ -85,13 +85,14 @@ let transform (str : Parsetree.structure) =
   else
     Fillup.replace_hashhash str
     |> Selected_ast.To_ocaml.copy_structure
+    (* |> Fillup.alert_mapper *)
     |> Fillup.typer_untyper
     |> Selected_ast.Of_ocaml.copy_structure
-    |> Fillup.alert_mapper
 
 let () =
   Driver.register_transformation
     ~extensions:
       [ hole; open_instance_toplevel; open_instance_local; open_instance ]
-    ~instrument:(Driver.Instrument.make ~position:After transform)
+    ~instrument:(Driver.Instrument.make transform ~position:After)
+    (* ~impl:transform  *)
     "ppx_fillup"
