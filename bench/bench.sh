@@ -5,7 +5,7 @@ target=$1
 
 bench() {
     for i in {1}; do
-        rm -rf ..//../_build/default/bench/target
+        rm -rf ../../_build/default/bench/target
         dune build $1
     done
 }
@@ -28,6 +28,6 @@ git pull
 opam install . --deps-only -y
 cd $CIR
 
-# time $(bench)
+time $(bench)
 rewrite $target
 time $(bench)
