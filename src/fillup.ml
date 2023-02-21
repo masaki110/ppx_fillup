@@ -121,8 +121,10 @@ module Typeful = struct
               | Mty_signature sg ->
                   List.fold_left
                     (fun acc -> function
-                      | Types.Sig_value (ident, desc, _) ->
-                          Mono (Path.Pdot (path, Ident.name ident), desc) :: acc
+                      | Types.Sig_value (ident, _, _) ->
+                          let p = Path.Pdot (path, Ident.name ident) in
+                          (* get type from the env (not using signature, as it abbreviates the path)  *)
+                          Mono (p, Env.find_value p env) :: acc
                       | _ -> acc)
                     [] sg
               | Mty_alias p -> search_sg p None (Env.find_module p env)
