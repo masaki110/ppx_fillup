@@ -3,6 +3,41 @@ open Util
 module Typeful = struct
   open Parsetree
 
+  let alert_filled (super : Ast_mapper.mapper) self (exp : Parsetree.expression)
+      =
+    let mark_alert exp =
+      let expstr =
+        Format.asprintf "ppx_fillup Filled: %a" Pprintast.expression exp
+      in
+      (* let _innerstr exp = Format.asprintf "%a" Pprintast.expression exp in *)
+      let payload = Ast_helper.Exp.constant (Ast_helper.Const.string expstr) in
+      let attr =
+        {
+          Parsetree.attr_name = { txt = "ppwarning"; loc = Location.none };
+          attr_payload =
+            PStr
+              [
+                { pstr_desc = Pstr_eval (payload, []); pstr_loc = exp.pexp_loc };
+              ];
+          attr_loc = exp.pexp_loc;
+        }
+      in
+      { exp with pexp_attributes = attr :: exp.Parsetree.pexp_attributes }
+    in
+    let check_attr_expr exp txt =
+      let rec loop acc = function
+        | [] -> None
+        | attr :: attrs ->
+            if attr.attr_name.txt = txt then
+              Some { exp with pexp_attributes = acc @ attrs }
+            else loop (attr :: acc) attrs
+      in
+      loop [] exp.pexp_attributes
+    in
+    match check_attr_expr exp "Filled" with
+    | None -> super.expr self exp
+    | Some e -> mark_alert e
+
   let check_attr_texpr texp txt =
     Typedtree.(
       let rec match_attrs acc texp = function
@@ -32,39 +67,6 @@ module Typeful = struct
       | Some e -> Some e
       | None -> match_extra [] texp texp.exp_extra)
 
-  let mark_alert exp =
-    let expstr =
-      Format.asprintf "ppx_fillup Filled: %a" Pprintast.expression exp
-    in
-    let _innerstr exp = Format.asprintf "%a" Pprintast.expression exp in
-    let payload = Ast_helper.Exp.constant (Ast_helper.Const.string expstr) in
-    let attr =
-      {
-        Parsetree.attr_name = { txt = "ppwarning"; loc = Location.none };
-        attr_payload =
-          PStr
-            [ { pstr_desc = Pstr_eval (payload, []); pstr_loc = exp.pexp_loc } ];
-        attr_loc = exp.pexp_loc;
-      }
-    in
-    { exp with pexp_attributes = attr :: exp.Parsetree.pexp_attributes }
-
-  let alert_filled (super : Ast_mapper.mapper) (self : Ast_mapper.mapper)
-      (exp : Parsetree.expression) =
-    let check_attr_expr exp txt =
-      let rec loop acc = function
-        | [] -> None
-        | attr :: attrs ->
-            if attr.attr_name.txt = txt then
-              Some { exp with pexp_attributes = acc @ attrs }
-            else loop (attr :: acc) attrs
-      in
-      loop [] exp.pexp_attributes
-    in
-    match check_attr_expr exp "Filled" with
-    | None -> super.expr self exp
-    | Some e -> mark_alert e
-
   let rec apply_holes n exp =
     if n = 0 then exp
     else
@@ -74,30 +76,31 @@ module Typeful = struct
 
   let match_instance env hole inst =
     match inst with
-    | Mul (p, tdesc) -> begin
-        let rec loop path tdesc =
-          let inst_desc : Types.type_desc = Compatibility.repr_type env tdesc in
+    | Poly (lp, desc) -> begin
+        let rec loop path texp =
+          let inst_desc : Types.type_desc = Compatibility.repr_type env texp in
           match inst_desc with
           | Tarrow (_, _, ret, _) -> (
               if
                 (* prerr_endline (Path.name path); *)
-                Compatibility.match_type env hole tdesc
+                Compatibility.match_type env hole texp
               then Some { level = 0; current_path = path }
               else
                 match loop path ret with
                 | Some inst -> Some { inst with level = inst.level + 1 }
                 | None -> None)
           | _ ->
-              if Compatibility.match_type env hole tdesc then
+              if Compatibility.match_type env hole texp then
                 Some { level = 0; current_path = path }
               else None
         in
-        match loop p.current_path tdesc.val_type with
-        | Some lp -> Some (Mul (lp, tdesc))
+        match loop lp.current_path desc.val_type with
+        | Some lp -> Some (Poly (lp, desc))
         | None -> None
       end
-    | Sin (_, tdesc) ->
-        if Compatibility.match_type env hole tdesc.val_type then Some inst
+    | Mono (_p, desc) ->
+        (* prerr_endline @@ Format.asprintf "%s" (Path.name _p); *)
+        if Compatibility.match_type env hole desc.val_type then Some inst
         else None
 
   let make_instances env =
@@ -119,7 +122,7 @@ module Typeful = struct
                   List.fold_left
                     (fun acc -> function
                       | Types.Sig_value (ident, desc, _) ->
-                          Sin (Path.Pdot (path, Ident.name ident), desc) :: acc
+                          Mono (Path.Pdot (path, Ident.name ident), desc) :: acc
                       | _ -> acc)
                     [] sg
               | Mty_alias p -> search_sg p None (Env.find_module p env)
@@ -132,7 +135,7 @@ module Typeful = struct
                     (fun acc -> function
                       | Types.Sig_value (ident, desc, _)
                         when Ident.name ident = name ->
-                          Sin (Path.Pdot (path, Ident.name ident), desc) :: acc
+                          Mono (Path.Pdot (path, Ident.name ident), desc) :: acc
                       | _ -> acc)
                     [] sg
               | Mty_alias p -> search_sg p (Some name) (Env.find_module p env)
@@ -151,29 +154,28 @@ module Typeful = struct
           if
             desc.val_attributes
             |> List.exists (fun attr -> attr.attr_name.txt = "instance")
-          then Sin (path, desc) :: acc
+          then Mono (path, desc) :: acc
           else if
             desc.val_attributes
             |> List.exists (fun attr ->
                    attr.attr_name.txt = "instance_with_context")
-          then Mul ({ level = 0; current_path = path }, desc) :: acc
+          then Poly ({ level = 0; current_path = path }, desc) :: acc
           else acc)
         None env []
     in
     env_values env @ md_values env
 
   let resolve_instances (texp : Typedtree.expression) =
+    let insts = make_instances texp.exp_env in
     let rec loop = function
       | (inst : instance) :: rest -> (
-          (* print_endline
-             @@ Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr
-                  desc.val_type; *)
           match match_instance texp.exp_env texp.exp_type inst with
           | Some i -> i :: loop rest
           | None -> loop rest)
       | [] -> []
     in
-    loop (make_instances texp.exp_env)
+    (* prerr_endline @@ show_instances insts; *)
+    loop insts
 
   let mkattr name ~loc =
     { attr_name = mkloc ~loc name; attr_payload = PStr []; attr_loc = loc }
@@ -188,10 +190,9 @@ module Typeful = struct
       }
       :: texp.exp_attributes
     in
-    (* prerr_endline @@ Format.asprintf "%a" Printtyp.type_expr texp.exp_type; *)
     match resolve_instances texp with
-    | [ Sin (p, _) ] -> evar' ~loc ~attrs p
-    | [ Mul (lp, _) ] ->
+    | [ Mono (p, _) ] -> evar' ~loc ~attrs p
+    | [ Poly (lp, _) ] ->
         to_exp
           [%expr
             [%e
@@ -219,7 +220,7 @@ module Typeful = struct
     let str' = untyp_expr_mapper search_hole tstr in
     if str = str' then
       (* prerr_endline @@ Pprintast.string_of_structure str'; *)
-      expr_mapper alert_filled str'
+      str'
     else loop_typer_untyper str'
 end
 
@@ -247,5 +248,6 @@ module Typeless = struct
     end
 end
 
-let replace_hashhash = (new Typeless.replace_hashhash_with_holes)#structure
+let alert_mapper = expr_mapper Typeful.alert_filled
 let typer_untyper = Typeful.loop_typer_untyper
+let replace_hashhash = (new Typeless.replace_hashhash_with_holes)#structure

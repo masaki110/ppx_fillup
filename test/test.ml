@@ -1,5 +1,5 @@
 (* don't make preprocessor warnings as errors *)
-[@@@warnerror "-22"]
+(* [@@@warnerror "-22"] *)
 
 open OUnit2
 
@@ -24,7 +24,7 @@ let test_show_polymorphic _ =
   assert_equal "Some 123" show ## (Some 123);
   assert_equal "None" show ## (None : string option);
   assert_equal "123, 456, 789" show ## [ 123; 456; 789 ];
-  assert_equal "1.23, 4.56, 7.89" show ## [ 1.23; 4.56; 7.89 ]
+  assert_equal "1.23, 4.56, 7.89" show ## [ [ 1.23; 4.56 ]; [ 7.89 ] ]
 
 module M = struct
   let (show_bool [@instance]) = string_of_bool
@@ -38,23 +38,42 @@ let test_local_declearation _ =
 
 (* open module as instance of ppx_fillup *)
 (* 3 or more arguments *)
-open Parsetree
+open! Parsetree
 
 open%fillup Pprintast
 
 let loc = Location.none
-let test_print_ast _ = assert_equal "1 + 1" @@ show __ [%expr 1 + 1]
+
+let test_print_ast _ =
+  assert_equal "1 + 1" @@ show __ [%expr 1 + 1];
+  ()
+
+(* add *)
+let add inst x y = inst x y
+let (add_int [@instance]) = fun x y -> x + y
+let (add_float [@instance]) = fun x y -> x +. y
+
+let test_add _ =
+  (* assert_equal 579 @@ add __ 123 456;
+     assert_equal 5.79 @@ add __ 1.23 4.56; *)
+  ()
 
 (* open some of expressions in module as instance of ppx_fillup *)
 module Show = struct
+  type t = Msg of string
+
   let show_int = string_of_int
   let show_bool = string_of_bool
+  let show_msg = function Msg x -> x
 end
 
-[%%open_inst Show show_bool]
+(* [%%open_inst Show show_bool] *)
+open%fillup Show
 
 let test_open_inst _ =
   (* assert_equal "true" @@ show __ true; *)
+  let x = Show.(Msg "msg") in
+  assert_equal "msg" @@ show __ x;
   ()
 
 let _ =
@@ -63,6 +82,7 @@ let _ =
     >::: [
            "test show" >:: test_show;
            "test show polymorphic" >:: test_show_polymorphic;
+           "test add" >:: test_add;
            "test local declearation" >:: test_local_declearation;
            "test print AST" >:: test_print_ast;
            "test expressions in module" >:: test_open_inst;

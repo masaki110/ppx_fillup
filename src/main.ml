@@ -76,7 +76,7 @@ let open_instance =
         @@ Mb.mk ~loc dummy_md_name
         @@ Mod.structure ~loc (str_of_construct ~loc lid expop)
       in
-      prerr_endline @@ Pprintast.string_of_structure [ stri ];
+      (* prerr_endline @@ Pprintast.string_of_structure [ stri ]; *)
       stri)
 
 let transform (str : Parsetree.structure) =
@@ -87,6 +87,7 @@ let transform (str : Parsetree.structure) =
     |> Selected_ast.To_ocaml.copy_structure
     |> Fillup.typer_untyper
     |> Selected_ast.Of_ocaml.copy_structure
+    |> Fillup.alert_mapper
 
 let () =
   Driver.register_transformation

@@ -7,7 +7,10 @@
   let match_type env texp texp' =
     Ctype.does_match env texp texp'
 
-  let repr_type _ (texp : Types.type_expr) = Types.get_desc texp
+  let repr_type env (texp : Types.type_expr) = 
+    (* Types.get_desc texp *)
+    (* (Types.Transient_expr.repr (Ctype.expand_head env texp)).desc *)
+    Types.get_desc (Ctype.expand_head env texp)
 
 #else
   

@@ -2,23 +2,23 @@
 type lpath = { level : int; current_path : Path.t }
 
 type instance =
-  | Sin of (Path.t * Types.value_description)
-  | Mul of (lpath * Types.value_description)
+  | Mono of (Path.t * Types.value_description)
+  | Poly of (lpath * Types.value_description)
 
 let show_instances l =
   let show_instance inst =
     let lpath_name p = Path.name p.current_path in
     match inst with
-    | Sin (p, vdesc) ->
+    | Mono (p, vdesc) ->
         Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr
           vdesc.val_type
-    | Mul (p, vdesc) ->
+    | Poly (p, vdesc) ->
         Format.asprintf "%s : %a" (lpath_name p) Printtyp.type_expr
           vdesc.val_type
   in
   let rec loop acc = function
     | [] -> "[]"
-    | [ i ] -> show_instance i ^ " ]"
+    | [ i ] -> acc ^ show_instance i ^ " ]"
     | i :: rest -> loop (acc ^ show_instance i ^ ",\n  ") rest
   in
   loop "[ " l
@@ -86,7 +86,6 @@ let evar' ~loc ~attrs path =
 open Ppxlib
 
 let to_exp = Selected_ast.To_ocaml.copy_expression
-
 let of_exp = Selected_ast.Of_ocaml.copy_expression
 
 let mkhole =
