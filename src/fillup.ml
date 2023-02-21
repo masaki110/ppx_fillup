@@ -75,6 +75,7 @@ module Typeful = struct
       @@ to_exp [%expr [%e of_exp exp] [%e of_exp (mkhole' ~loc)]]
 
   let match_instance env hole inst =
+    (* prerr_endline @@ Format.asprintf "hole : %a" Printtyp.type_expr hole; *)
     match inst with
     | Poly (lp, desc) -> begin
         let rec loop path texp =
@@ -99,7 +100,9 @@ module Typeful = struct
         | None -> None
       end
     | Mono (_p, desc) ->
-        (* prerr_endline @@ Format.asprintf "%s" (Path.name _p); *)
+        (* prerr_endline
+           @@ Format.asprintf "instance %s : %a" (Path.name _p) Printtyp.type_expr
+                desc.val_type; *)
         if Compatibility.match_type env hole desc.val_type then Some inst
         else None
 
@@ -114,7 +117,7 @@ module Typeful = struct
           None env []
       in
       let resolve_dummy_md md =
-        let rec search_sg path expop md =
+        let rec search_sig path expop md =
           match expop with
           | None -> begin
               match md.Types.md_type with
@@ -125,7 +128,7 @@ module Typeful = struct
                           Mono (Path.Pdot (path, Ident.name ident), desc) :: acc
                       | _ -> acc)
                     [] sg
-              | Mty_alias p -> search_sg p None (Env.find_module p env)
+              | Mty_alias p -> search_sig p None (Env.find_module p env)
               | _ -> []
             end
           | Some name -> begin
@@ -138,12 +141,12 @@ module Typeful = struct
                           Mono (Path.Pdot (path, Ident.name ident), desc) :: acc
                       | _ -> acc)
                     [] sg
-              | Mty_alias p -> search_sg p (Some name) (Env.find_module p env)
+              | Mty_alias p -> search_sig p (Some name) (Env.find_module p env)
               | _ -> []
             end
         in
         match md.Types.md_type with
-        | Mty_alias p -> search_sg p None (Env.find_module p env)
+        | Mty_alias p -> search_sig p None (Env.find_module p env)
         | _ -> []
       in
       List.concat @@ List.map resolve_dummy_md (dummy_md env)
@@ -166,7 +169,6 @@ module Typeful = struct
     env_values env @ md_values env
 
   let resolve_instances (texp : Typedtree.expression) =
-    let insts = make_instances texp.exp_env in
     let rec loop = function
       | (inst : instance) :: rest -> (
           match match_instance texp.exp_env texp.exp_type inst with
@@ -174,6 +176,7 @@ module Typeful = struct
           | None -> loop rest)
       | [] -> []
     in
+    let insts = make_instances texp.exp_env in
     (* prerr_endline @@ show_instances insts; *)
     loop insts
 
@@ -218,10 +221,7 @@ module Typeful = struct
     let env = Compmisc.initial_env () in
     let tstr = Compatibility.type_structure env str in
     let str' = untyp_expr_mapper search_hole tstr in
-    if str = str' then
-      (* prerr_endline @@ Pprintast.string_of_structure str'; *)
-      str'
-    else loop_typer_untyper str'
+    if str = str' then str' else loop_typer_untyper str'
 end
 
 module Typeless = struct
