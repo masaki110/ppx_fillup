@@ -9,12 +9,11 @@ let show_instances l =
   let show_instance inst =
     let lpath_name p = Path.name p.current_path in
     match inst with
-    | Mono (p, vdesc) ->
-        Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr
-          vdesc.val_type
-    | Poly (p, vdesc) ->
+    | Mono (p, desc) ->
+        Format.asprintf "%s : %a" (Path.name p) Printtyp.type_expr desc.val_type
+    | Poly (p, desc) ->
         Format.asprintf "%s : %a" (lpath_name p) Printtyp.type_expr
-          vdesc.val_type
+          desc.val_type
   in
   let rec loop acc = function
     | [] -> "[]"
