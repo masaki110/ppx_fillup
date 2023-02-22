@@ -36,13 +36,14 @@ let test_show _ =
   assert_equal "None" show ## (None : string option);
   assert_equal "123, 456, 789" show ## [ 123; 456; 789 ];
   assert_equal "1.23, 4.56, 7.89" show ## [ [ 1.23; 4.56 ]; [ 7.89 ] ];
+
   assert_equal "msg" show##msg;
   ()
 
 (* 3 or more arguments *)
 (* print AST *)
 let test_print_ast _ =
-  let open! Parsetree in
+  let open! Ppxlib.Parsetree in
   let open%fillup Ppxlib.Pprintast in
   let loc = Location.none in
   assert_equal "1 + 1" show ## [%expr 1 + 1];
