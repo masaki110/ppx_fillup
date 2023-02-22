@@ -42,7 +42,7 @@ let test_show _ =
 (* 3 or more arguments *)
 (* print AST *)
 let test_print_ast _ =
-  let open Parsetree in
+  let open! Parsetree in
   let open%fillup Ppxlib.Pprintast in
   let loc = Location.none in
   assert_equal "1 + 1" show ## [%expr 1 + 1];
