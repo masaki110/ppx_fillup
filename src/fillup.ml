@@ -234,18 +234,24 @@ module Typeless = struct
       inherit Ppxlib.Ast_traverse.map as super
 
       method! expression exp =
+        let loc = exp.pexp_loc in
         match exp.pexp_desc with
-        | Pexp_ident { txt = Lident "__"; loc } -> mkhole ~loc
+        | Pexp_ident { txt = Lident "__"; _ } -> mkhole ~loc
         | Pexp_apply
             ( {
                 pexp_desc = Pexp_ident { txt = Lident "##"; _ };
-                pexp_loc = loc;
+                pexp_loc = loc';
+                pexp_attributes = attrs';
                 _;
               },
-              [ (_, arg1); (_, arg2) ] ) ->
-            Ast_helper.Exp.apply ~loc:exp.pexp_loc ~attrs:exp.pexp_attributes
+              (_, arg1) :: args ) ->
+            Ast_helper.Exp.apply ~loc ~attrs:exp.pexp_attributes
               (this#expression arg1)
-              [ (Nolabel, mkhole ~loc); (Nolabel, this#expression arg2) ]
+              [
+                ( Nolabel,
+                  Ast_helper.Exp.apply ~loc:loc' ~attrs:attrs'
+                    (mkhole ~loc:loc') args );
+              ]
         | _ -> super#expression exp
     end
 end
