@@ -4,7 +4,7 @@ _ppx_fillup_ はOCamlでアドホック多相を実現するためのライブ�
 
 ## Buildsystem integration (WIP)
 
-Dune を利用する場合、 以下のように`preprocess`に`staged_pps`として登録します。
+Dune を利用して、 以下のように`preprocess`に`staged_pps`として`ppx_fillup`を登録します。
 
 ```dune 
 (executable
