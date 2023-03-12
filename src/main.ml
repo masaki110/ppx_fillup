@@ -5,7 +5,7 @@ open Util
 let hole =
   Extension.declare "HOLE" Extension.Context.expression
     Ast_pattern.(pstr nil)
-    (fun ~loc ~path:_ -> mkhole ~loc)
+    (fun ~loc ~path:_ -> mkhole ~loc ())
 
 (* open%fillup M, open module as instances *)
 let open_instance_toplevel =
@@ -80,6 +80,7 @@ let open_instance =
       stri)
 
 let transform (str : Parsetree.structure) =
+  (* let str' = *)
   if Ocaml_common.Ast_mapper.tool_name () = "ocamldep" then
     Fillup.replace_hashhash str
   else
@@ -88,6 +89,9 @@ let transform (str : Parsetree.structure) =
     (* |> Fillup.alert_mapper *)
     |> Fillup.typer_untyper
     |> Selected_ast.Of_ocaml.copy_structure
+(* in *)
+(* Format.eprintf "%a" Pprintast.structure str';
+   str' *)
 
 let () =
   Driver.register_transformation

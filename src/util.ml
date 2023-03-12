@@ -33,11 +33,8 @@ let mk_dummy_md_name =
    output_string out x;
    close_out out *)
 
-let mkloc ~loc txt =
-  let open Ppxlib in
-  { txt; loc }
-
-let mknoloc txt = mkloc ~loc:!Ast_helper.default_loc txt
+let mkloc ~loc txt = Location.{ txt; loc }
+let mknoloc txt = mkloc ~loc:Location.none txt
 
 (* let attr_exists attrs txt =
    List.exists
@@ -84,17 +81,23 @@ let evar' ~loc ~attrs path =
 
 open Ppxlib
 
-let to_exp = Selected_ast.To_ocaml.copy_expression
-let of_exp = Selected_ast.Of_ocaml.copy_expression
+let to_ocaml_exp = Selected_ast.To_ocaml.copy_expression
+let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
 
 let mkhole =
   let cnt = ref 0 in
-  fun ~loc ->
+  fun ~loc ?(attrs = []) () ->
     cnt := !cnt + 1;
-    let typ = Ast_helper.Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
-    [%expr (assert false : [%t typ]) [@HOLE]]
+    let open Ast_helper in
+    let typ = Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
+    {
+      ([%expr (assert false : [%t typ])]) with
+      pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } (PStr []) :: attrs;
+    }
 
-let mkhole' ~loc = Selected_ast.To_ocaml.copy_expression @@ mkhole ~loc
+(* let mkhole ~loc ~attrs = mkhole ~loc ~attrs () *)
+
+let mkhole' ~loc ~attrs = to_ocaml_exp @@ mkhole ~loc ~attrs ()
 
 let match_attrs attrs txt =
   let rec loop acc = function
