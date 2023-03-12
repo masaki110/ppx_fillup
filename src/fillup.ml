@@ -70,9 +70,11 @@ module Typeful = struct
   let rec apply_holes n exp =
     if n = 0 then exp
     else
-      let loc = exp.pexp_loc in
+      let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
       apply_holes (n - 1)
-      @@ to_exp [%expr [%e of_exp exp] [%e of_exp (mkhole' ~loc)]]
+      (* @@ to_ocaml_exp
+           [%expr [%e of_ocaml_exp exp] [%e of_ocaml_exp (mkhole' ~loc ~attrs)]] *)
+      @@ Ast_helper.Exp.apply ~loc ~attrs exp [ (Nolabel, mkhole' ~loc ~attrs) ]
 
   let match_instance env hole inst =
     (* prerr_endline @@ Format.asprintf "hole : %a" Printtyp.type_expr hole; *)
@@ -107,7 +109,7 @@ module Typeful = struct
         else None
 
   let make_instances env =
-    let md_values env =
+    let md_vals env =
       let dummy_md env =
         Env.fold_modules
           (fun name _ md acc ->
@@ -153,9 +155,19 @@ module Typeful = struct
       in
       List.concat @@ List.map resolve_dummy_md (dummy_md env)
     in
-    let env_values env =
+    let env_vals env =
+      let deriving_types =
+        Env.fold_types
+          (fun name _ decl acc ->
+            if
+              decl.type_attributes
+              |> List.exists (fun attr -> attr.attr_name.txt = "deriving")
+            then name :: acc
+            else acc)
+          None env []
+      in
       Env.fold_values
-        (fun _ path desc acc ->
+        (fun name path desc acc ->
           if
             desc.val_attributes
             |> List.exists (fun attr -> attr.attr_name.txt = "instance")
@@ -165,10 +177,17 @@ module Typeful = struct
             |> List.exists (fun attr ->
                    attr.attr_name.txt = "instance_with_context")
           then Poly ({ level = 0; current_path = path }, desc) :: acc
+          else if
+            List.exists
+              (fun type_name ->
+                Str.(
+                  string_match (regexp ("\\(show\\|pp\\)_" ^ type_name)) name 0))
+              deriving_types
+          then Mono (path, desc) :: acc
           else acc)
         None env []
     in
-    env_values env @ md_values env
+    env_vals env @ md_vals env
 
   let resolve_instances (texp : Typedtree.expression) =
     let rec loop = function
@@ -198,10 +217,10 @@ module Typeful = struct
     match resolve_instances texp with
     | [ Mono (p, _) ] -> evar' ~loc ~attrs p
     | [ Poly (lp, _) ] ->
-        to_exp
+        to_ocaml_exp
           [%expr
             [%e
-              of_exp
+              of_ocaml_exp
               @@ apply_holes lp.level
               @@ evar' ~loc ~attrs lp.current_path]]
     | _ :: _ as l ->
@@ -234,24 +253,22 @@ module Typeless = struct
       inherit Ppxlib.Ast_traverse.map as super
 
       method! expression exp =
-        let loc = exp.pexp_loc in
+        let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
+        let hole = mkhole ~loc ~attrs () in
         match exp.pexp_desc with
-        | Pexp_ident { txt = Lident "__"; _ } -> mkhole ~loc
+        | Pexp_ident { txt = Lident "__"; _ } -> hole
         | Pexp_apply
-            ( {
-                pexp_desc = Pexp_ident { txt = Lident "##"; _ };
-                pexp_loc = loc';
-                pexp_attributes = attrs';
-                _;
-              },
+            ( { pexp_desc = Pexp_ident { txt = Lident "##"; _ }; _ },
               (_, arg1) :: args ) ->
-            Ast_helper.Exp.apply ~loc ~attrs:exp.pexp_attributes
-              (this#expression arg1)
-              [
-                ( Nolabel,
-                  Ast_helper.Exp.apply ~loc:loc' ~attrs:attrs'
-                    (mkhole ~loc:loc') args );
-              ]
+            Ast_helper.Exp.apply ~loc ~attrs (this#expression arg1)
+              [ (Nolabel, Ast_helper.Exp.apply ~loc hole args) ]
+        | Pexp_apply
+            ( { pexp_desc = Pexp_ident { txt = Lident "##~"; _ }; _ },
+              (_, arg1)
+              :: (_, { pexp_desc = Pexp_ident { txt = Lident name; _ }; _ })
+              :: args ) ->
+            Ast_helper.Exp.apply ~loc ~attrs (this#expression arg1)
+              ((Labelled name, hole) :: args)
         | _ -> super#expression exp
     end
 end
