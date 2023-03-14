@@ -8,7 +8,7 @@ let loc = Location.none
 let println x = Format.printf "%a\n" x
 
 let () =
-  println ## [%expr 1 + 2];
-  println ## [%type: int];
-  println ## [%pat? _, _];
+  println __ [%expr 1 + 2];
+  println __ [%type: int];
+  println __ [%pat? _, _];
   Format.printf "%a\n" __ [%pat? _, _];
