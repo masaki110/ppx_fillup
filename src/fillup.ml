@@ -95,8 +95,8 @@ module Typeful = struct
       in
       match_attrs texp txt)
 
-  let rec apply_holes n exp =
-    if n = 0 then exp
+  let rec apply_holes n (exp : expression) =
+    if n = 0 then exp 
     else
       let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
       apply_holes (n - 1)
@@ -105,7 +105,7 @@ module Typeful = struct
         (* @@ Ast_helper.Exp.apply ~loc ~attrs exp [ (Nolabel, mkhole' ~loc ~attrs) ] *)
         {
           exp with
-          pexp_desc = Pexp_apply (exp, [ (Nolabel, mkhole' ~loc ~attrs) ]);
+          pexp_desc = Pexp_apply (exp, [ (Nolabel, mkhole ~loc ~attrs ()) ]);
         }
 
   let make_iset env =
@@ -270,14 +270,14 @@ module Typeful = struct
         let loc = hole.exp_loc in
         let attrs = hole.exp_attributes in
         match check_instance hole with
-        | [ Mono (p, _) ] -> evar' ~loc ~attrs p
+        | [ Mono (p, _) ] -> evar ~loc ~attrs p
         | [ Poly (lp, _) ] ->
             (* to_ocaml_exp
                [%expr
                  [%e
                    of_ocaml_exp
                    @@ ]] *)
-            apply_holes lp.level @@ evar' ~loc ~attrs lp.current_path
+            apply_holes lp.level @@ evar ~loc ~attrs lp.current_path
         | _ :: _ as l ->
             Location.raise_errorf ~loc
               "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
@@ -306,8 +306,10 @@ module Typeless = struct
 
       method! expression exp =
         let open Ast_helper in
-        let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
-        let hole = mkhole ~loc ~attrs () in
+        let loc = exp.pexp_loc in 
+        let attrs = (Cast.to_ocaml_exp exp).pexp_attributes in
+        let hole = Cast.of_ocaml_exp @@ mkhole ~loc ~attrs () in
+        let attrs = exp.pexp_attributes in
         match exp.pexp_desc with
         | Pexp_ident { txt = Lident "__"; _ } -> hole
         | Pexp_apply

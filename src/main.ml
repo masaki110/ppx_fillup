@@ -5,7 +5,7 @@ open Util
 let hole =
   Extension.declare "HOLE" Extension.Context.expression
     Ast_pattern.(pstr nil)
-    (fun ~loc ~path:_ -> mkhole ~loc ())
+    (fun ~loc ~path:_ -> mkhole' ~loc ())
 
 (* open%fillup M, open module as instances *)
 let open_instance_toplevel =

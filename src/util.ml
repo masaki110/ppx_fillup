@@ -1,3 +1,14 @@
+module Cast = struct
+  open Ppxlib
+
+  let to_ocaml_exp = Selected_ast.To_ocaml.copy_expression
+  let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
+
+  let to_ocaml_typ = Selected_ast.To_ocaml.copy_core_type
+  let of_ocaml_typ = Selected_ast.Of_ocaml.copy_core_type
+end
+
+
 (* type path = Multi of int * Path.t | Mono of Path.t *)
 type lpath = { level : int; current_path : Path.t }
 
@@ -62,9 +73,9 @@ let untyp_expr_mapper f tstr =
   let self = { super with expr = f super } in
   self.structure self tstr
 
-let evar ~loc ~attrs ident =
-  Ast_helper.Exp.ident ~loc ~attrs
-    (mknoloc (Longident.Lident (Ident.name ident)))
+(* let evar ~loc ~attrs ident =
+   Ast_helper.Exp.ident ~loc ~attrs
+     (mknoloc (Longident.Lident (Ident.name ident))) *)
 
 let lid_of_path path =
   let rec loop =
@@ -76,33 +87,27 @@ let lid_of_path path =
   in
   loop path
 
-let evar' ~loc ~attrs path =
+let evar ~loc ~attrs path =
   Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lid_of_path path
 
-open Ppxlib
-
-let to_ocaml_exp = Selected_ast.To_ocaml.copy_expression
-let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
 
 let mkhole =
   let cnt = ref 0 in
   fun ~loc ?(attrs = []) ?(str = []) () ->
     cnt := !cnt + 1;
     let open Ast_helper in
-    let typ = Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
     {
-      ([%expr (assert false : [%t typ])]) with
+      (Cast.to_ocaml_exp ([%expr (assert false : [%t Cast.of_ocaml_typ @@ Typ.var @@ "fillup_hole" ^ string_of_int !cnt])])) with
       pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } (PStr str) :: attrs;
     }
 
-(* let mkhole ~loc ~attrs = mkhole ~loc ~attrs () *)
+let mkhole' ~loc ?(attrs=[]) () = Cast.of_ocaml_exp @@ mkhole ~loc ~attrs ()
 
-let mkhole' ~loc ~attrs = to_ocaml_exp @@ mkhole ~loc ~attrs ()
 
 let match_attrs attrs txt =
   let rec loop acc = function
     | [] -> acc
-    | attr :: attrs ->
+    | (attr:Parsetree.attribute) :: attrs ->
         if attr.attr_name.txt = txt then acc @ attrs
         else loop (attr :: acc) attrs
   in
