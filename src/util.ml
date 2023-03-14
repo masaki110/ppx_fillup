@@ -86,13 +86,13 @@ let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
 
 let mkhole =
   let cnt = ref 0 in
-  fun ~loc ?(attrs = []) () ->
+  fun ~loc ?(attrs = []) ?(str = []) () ->
     cnt := !cnt + 1;
     let open Ast_helper in
     let typ = Typ.var @@ "fillup_hole" ^ string_of_int !cnt in
     {
       ([%expr (assert false : [%t typ])]) with
-      pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } (PStr []) :: attrs;
+      pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } (PStr str) :: attrs;
     }
 
 (* let mkhole ~loc ~attrs = mkhole ~loc ~attrs () *)
