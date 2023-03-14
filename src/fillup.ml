@@ -94,9 +94,9 @@ module Typeful = struct
     else
       let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
       apply_holes (n - 1)
-      (* @@ to_ocaml_exp
-           [%expr [%e of_ocaml_exp exp] [%e of_ocaml_exp (mkhole' ~loc ~attrs)]] *)
-      @@ Ast_helper.Exp.apply ~loc ~attrs exp [ (Nolabel, mkhole' ~loc ~attrs) ]
+      @@ to_ocaml_exp
+           [%expr [%e of_ocaml_exp exp] [%e of_ocaml_exp (mkhole' ~loc ~attrs)]]
+  (* @@ Ast_helper.Exp.apply ~loc ~attrs exp [ (Nolabel, mkhole' ~loc ~attrs) ] *)
 
   let make_iset env =
     let md_vals env =
@@ -179,7 +179,7 @@ module Typeful = struct
     in
     env_vals env @ md_vals env
 
-  let check_instance (texp : Typedtree.expression) =
+  let check_instance (hole : Typedtree.expression) =
     let match_instance env hole inst =
       (* prerr_endline @@ Format.asprintf "hole : %a" Printtyp.type_expr hole; *)
       match inst with
@@ -216,54 +216,79 @@ module Typeful = struct
     in
     let rec loop = function
       | (inst : instance) :: rest -> (
-          match match_instance texp.exp_env texp.exp_type inst with
+          match match_instance hole.exp_env hole.exp_type inst with
           | Some i -> i :: loop rest
           | None -> loop rest)
       | [] -> []
     in
     (* let iset = make_iset texp.exp_env in *)
     (* prerr_endline @@ show_instances insts; *)
-    loop (make_iset texp.exp_env)
+    loop (make_iset hole.exp_env)
 
-  let replace_iset (texp : Typedtree.expression) =
-    let loc = texp.exp_loc in
-    let attrs =
-      {
-        attr_name = mkloc ~loc "Filled";
-        attr_payload = PStr [];
-        attr_loc = loc;
-      }
-      :: texp.exp_attributes
-    in
-    match check_instance texp with
-    | [ Mono (p, _) ] -> evar' ~loc ~attrs p
-    | [ Poly (lp, _) ] ->
-        to_ocaml_exp
-          [%expr
-            [%e
-              of_ocaml_exp
-              @@ apply_holes lp.level
-              @@ evar' ~loc ~attrs lp.current_path]]
-    | _ :: _ as l ->
-        Location.raise_errorf ~loc
-          "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
-          texp.exp_type (show_instances l)
-    | [] ->
-        Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
-          Printtyp.type_expr texp.exp_type
+  (* let replace_instance (hole : Typedtree.expression) =
+     let loc = hole.exp_loc in
+     let attrs =
+       {
+         attr_name = mkloc ~loc "Filled";
+         attr_payload = PStr [];
+         attr_loc = loc;
+       }
+       :: hole.exp_attributes
+     in
+     match check_instance hole with
+     | [ Mono (p, _) ] -> evar' ~loc ~attrs p
+     | [ Poly (lp, _) ] ->
+         to_ocaml_exp
+           [%expr
+             [%e
+               of_ocaml_exp
+               @@ apply_holes lp.level
+               @@ evar' ~loc ~attrs lp.current_path]]
+     | _ :: _ as l ->
+         Location.raise_errorf ~loc
+           "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
+           hole.exp_type (show_instances l)
+     | [] ->
+         Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
+           Printtyp.type_expr hole.exp_type *)
 
-  let search_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
+  let replace_instance (super : Untypeast.mapper) (self : Untypeast.mapper)
       (texp : Typedtree.expression) =
     match check_attr_texp texp "HOLE" with
     | None -> super.expr self texp
-    | Some texp -> replace_iset texp
+    | Some hole -> (
+        let loc = hole.exp_loc in
+        let attrs =
+          {
+            attr_name = mkloc ~loc "Filled";
+            attr_payload = PStr [];
+            attr_loc = loc;
+          }
+          :: hole.exp_attributes
+        in
+        match check_instance hole with
+        | [ Mono (p, _) ] -> evar' ~loc ~attrs p
+        | [ Poly (lp, _) ] ->
+            to_ocaml_exp
+              [%expr
+                [%e
+                  of_ocaml_exp
+                  @@ apply_holes lp.level
+                  @@ evar' ~loc ~attrs lp.current_path]]
+        | _ :: _ as l ->
+            Location.raise_errorf ~loc
+              "(ppx_fillup) Instance overlapped: %a \n[ %s ]" Printtyp.type_expr
+              hole.exp_type (show_instances l)
+        | [] ->
+            Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
+              Printtyp.type_expr hole.exp_type)
 
   let fillup str =
+    Compmisc.init_path ();
+    let env = Compmisc.initial_env () in
     let rec loop str =
-      Compmisc.init_path ();
-      let env = Compmisc.initial_env () in
       let tstr = Compatibility.type_structure env str in
-      let str' = untyp_expr_mapper search_hole tstr in
+      let str' = untyp_expr_mapper replace_instance tstr in
       if str = str' then str' else loop str'
     in
     loop str
