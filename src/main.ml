@@ -81,13 +81,15 @@ let open_instance =
 
 let transform (str : Parsetree.structure) =
   (* let str' = *)
-  if Ocaml_common.Ast_mapper.tool_name () = "ocamldep" then
-    Fillup.replace_hashhash str
+  if
+    Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+    || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+  then Fillup.preprocess str
   else
-    Fillup.replace_hashhash str
+    Fillup.preprocess str
     |> Selected_ast.To_ocaml.copy_structure
     (* |> Fillup.alert_mapper *)
-    |> Fillup.typer_untyper
+    |> Fillup.fillup
     |> Selected_ast.Of_ocaml.copy_structure
 (* in *)
 (* Format.eprintf "%a" Pprintast.structure str';
