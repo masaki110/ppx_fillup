@@ -6,6 +6,7 @@ depends: [
   "ocaml-compiler-libs"
   "ppx_deriving"
   "ounit2"
+  "base"
   "odoc" {with-doc}
 ]
 build: [
