@@ -91,9 +91,9 @@ let transform (str : Parsetree.structure) =
     (* |> Fillup.alert_mapper *)
     |> Fillup.fillup
     |> Selected_ast.Of_ocaml.copy_structure
-(* in *)
-(* Format.eprintf "%a" Pprintast.structure str';
-   str' *)
+(* in
+   Format.eprintf "%a" Pprintast.structure str';
+      str' *)
 
 let () =
   Driver.register_transformation
