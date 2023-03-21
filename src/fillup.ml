@@ -225,12 +225,12 @@ module Typeful = struct
          | _ -> super.expr self texp) *)
 
   let fillup str =
-    let cnt = ref 0 in
+    (* let cnt = ref 0 in *)
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
-      cnt := !cnt + 1;
-      print_endline (string_of_int !cnt);
+      (* cnt := !cnt + 1; *)
+      (* print_endline (string_of_int !cnt); *)
       let tstr = Compatibility.type_structure env str in
       let str' = untyp_expr_mapper replace_instance tstr in
       if str = str' then
