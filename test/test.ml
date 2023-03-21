@@ -12,18 +12,19 @@ module Show = struct
   let show_string x : string = x
   let show_bool = string_of_bool
   let show_msg = function Msg x -> x
+
+  let (show_option [@instance_with_context]) =
+   fun inst -> function None -> "None" | Some i -> "Some " ^ inst i
+
+  let (show_list [@instance_with_context]) =
+   fun inst xs -> "[" ^ String.concat ", " (List.map inst xs) ^ "]"
 end
-
-let (show_option [@instance_with_context]) =
- fun inst -> function None -> "None" | Some i -> "Some " ^ inst i
-
-let (print_list [@instance_with_context]) =
- fun inst xs -> "[" ^ String.concat ", " (List.map inst xs) ^ "]"
 
 let id x = x
 
 let test_show _ =
   let open%fillup Show in
+  (* let (show_int [@instance]) = string_of_int in *)
   let msg = Show.(Msg "msg") in
 
   assert_equal "123" id ## 123;
@@ -47,27 +48,9 @@ let test_print_ast _ =
   let loc = Location.none in
   assert_equal "1 + 1" id ## [%expr 1 + 1];
   assert_equal "42 : int" (Format.asprintf "%d : %a" 42 __ [%type: int]);
-  Format.printf "%d : %a" 42 __ [%type: int];
-  ()
-
-(* add *)
-module Add = struct
-  let add_int x y = x + y
-  let add_float x y = x +. y
-  let add_string x y = x ^ y
-end
-
-let add inst x y = inst x y
-
-let test_add _ =
-  let open%fillup Add in
-  assert_equal (123 + 456) (add __ 123 456);
-  assert_equal (1.23 +. 4.56) (add __ 1.23 4.56);
-  assert_equal ("foo" ^ "bar") (add __ "foo" "bar");
   ()
 
 (* optional arguments *)
-
 module Eq = struct
   let eq_int = Int.equal
   let eq_float = Float.equal
@@ -77,55 +60,75 @@ let test_optional _ =
   let mem = Base.List.mem in
   let open%fillup Eq in
   assert_equal true (mem ##~ equal [ 1; 3; 5 ] 1);
-  assert_equal true (mem ##~ equal [ 1; 3; 5 ] 1);
-  (* assert_equal (1.23 +. 4.56) (add __ 1.23 4.56);
-     assert_equal ("foo" ^ "bar") (add __ "foo" "bar"); *)
+  assert_equal true (mem ##~ equal [ 1.2; 3.3; 5.3 ] 1.5);
   ()
 
 (* first-class module *)
-(* let first_class_module _ = *)
-(* let sort (type s) (module Set : Set.S with type elt = s) l =
-     Set.elements (List.fold_right Set.add l Set.empty)
+let sort (type s) set l =
+  let module Set = (val set : Set.S with type elt = s) in
+  Set.elements (List.fold_right Set.add l Set.empty)
 
-   (* in *)
-   let make_set (type s) cmp =
-     let module S = Set.Make (struct
-       type t = s
+let make_set (type s) cmp =
+  let module S = Set.Make (struct
+    type t = s
 
-       let compare = cmp
-     end) in
-     (module S : Set.S with type elt = s)
-   (* in *)
+    let compare = cmp
+  end) in
+  (module S : Set.S with type elt = s)
 
-   let s = make_set
-   let _ = sort (module ) s *)
+let (set_int [@instance]) = make_set Int.compare
+let (set_float [@instance]) = make_set Float.compare
+
+let first_class_module _ =
+  assert_equal [ 1; 2; 3 ] (sort __ [ 2; 1; 3 ]);
+  assert_equal [ 1.3; 1.8; 2.3 ] (sort __ [ 2.3; 1.8; 1.3 ]);
+  ()
 
 (* ppx_deriving *)
-type person = { id : int; name : string } [@@deriving show]
-type affiliate = { name : string } [@@deriving show]
+type person = { id : int; name : string } [@@deriving show, eq, ord]
+type affiliate = { name : string } [@@deriving show, eq, ord]
+
+let equal ~eq x y = eq x y
+let order ~ord x y = ord x y
 
 let ppx_deriving _ =
   let open%fillup Show in
-  (* print_endline ## 123; *)
-  assert_equal "{ id = 013; name = 'ito' }" id ## { id = 013; name = "ito" };
-  assert_equal "{ name = 'Gifu Univ.' }" id ## { name = "Gifu Univ." };
+  assert_equal "{ Test.id = 13; name = \"ito\" }"
+    id ## { id = 013; name = "ito" };
+  assert_equal "{ Test.name = \"Gifu Univ.\" }" id ## { name = "Gifu Univ." };
+  assert_equal true
+    (equal ##~ eq { name = "Gifu Univ." } { name = "Gifu Univ." });
+  assert_equal 0
+    (order ##~ ord { id = 013; name = "ito" } { id = 013; name = "ito" });
   ()
 
-let test_list_sort _ =
-  let sort = List.sort [%derive.ord: int * int] in
-  assert_equal ~printer:[%derive.show: (int * int) list]
-    [ (1, 1); (2, 0); (3, 5) ]
-    (sort [ (2, 0); (3, 5); (1, 1) ])
+(* arithmetic*)
+(* module Arith = struct *)
+let (add_int_int [@instance "+"]) = ( + )
+let (add_int_float [@instance "+"]) = fun x y -> float_of_int x +. y
+let (add_float_int [@instance "+"]) = fun x y -> x +. float_of_int y
+let (add_float_float [@instance "+"]) = ( +. )
+let (sub_int_int [@instance "-"]) = ( - )
+let (sub_int_float [@instance "-"]) = fun x y -> float_of_int x -. y
+let (sub_float_int [@instance "-"]) = fun x y -> x -. float_of_int y
+let (sub_float_float [@instance "-"]) = ( -. )
+(* end *)
+
+let test_arith _ =
+  (* let open%fillup Arith in *)
+  (* assert_equal 3 (2 + 2 + 1); *)
+  (* assert_equal ~-1. (2.5 - 1); *)
+  ()
 
 let _ =
   let tests =
     "Test fillup"
     >::: [
-           " id" >:: test_show;
+           " show" >:: test_show;
            " print Ast" >:: test_print_ast;
-           " add" >:: test_add;
-           (* " first-class module" >:: first_class_module; *)
-           " ppx_deriving (show)" >:: ppx_deriving;
+           " first-class module" >:: first_class_module;
+           " ppx_deriving" >:: ppx_deriving;
+           " arithmetic" >:: test_arith;
          ]
   in
   run_test_tt_main tests
