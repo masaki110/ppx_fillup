@@ -16,13 +16,13 @@ bench_exe() {
     done
 }
 
-# time (bench_build $with) | echo
-# time (bench_build $without) | echo
-time (bench_build $tynest) | echo
+time (bench_build $with) | echo
+time (bench_build $without) | echo
+# time (bench_build $tynest) | echo
 
 # time (bench_exe $target) | echo | perl -e 's!.*real(.*)s.*!with fillup : \1!sg'
 # time (bench_exe $comp) | echo | perl -e 's!.*real(.*)s.*!without fillup : \1!sg'
-time (bench_exe $tynest) | echo
+# time (bench_exe $tynest) | echo
 
 # build 10回
 # with : 平均 2.6s

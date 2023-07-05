@@ -2,7 +2,7 @@
  (name main)
  (public_name ppx_fillup)
  (kind ppx_rewriter)
- (libraries ppxlib compiler-libs.common str)
+ (libraries ppxlib compiler-libs.common str core)
  (preprocess
   (pps ppxlib.metaquot)))
 

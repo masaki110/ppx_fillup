@@ -1,6 +1,0 @@
-(executable
- (name parsetree_sample)
- (modules parsetree_sample)
- (libraries ppxlib)
- (preprocess
-  (staged_pps ppxlib.metaquot ppx_fillup)))

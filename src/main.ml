@@ -40,47 +40,69 @@ let open_instance_local =
         pexp_attributes = [];
       })
 
+(* let declare_placeholder =
+     Extension.declare "declare_placeholder" Extension.Context.structure_item
+       Ast_pattern.(pstr @@ pstr_eval (pexp_constant __) nil ^:: nil)
+       (fun ~loc ~path:_ (Pconst_string (str, _, Some ":")) ->
+         Ast_helper.(
+           let attrs = [] in
+           let pat = Pat.var ~loc ~attrs (mknoloc expr) in
+           let expr = Exp. ~loc ~ attrs ()
+           Str.value ~loc Nonrecursive
+             [ Vb.mk ~loc ~attrs pat expr ]))
+
+
+   let declare_placeholder =
+     Extension.declare "declare_placeholder" Extension.Context.structure_item
+       Ast_pattern.(pstr @@ pstr_eval (pexp_constraint __ __) nil ^:: nil)
+       (fun ~loc ~path:_ (Pconst_string (str, _, Some ":")) ->
+         Ast_helper.(
+           let attrs = [] in
+           let pat = Pat.var ~loc ~attrs (mknoloc expr) in
+           let expr = Exp.expr
+           Str.value ~loc Nonrecursive
+             [ Vb.mk ~loc ~attrs pat expr ])) *)
+
 (* [%%open_inst M(a,b,c)], open expressions (a,b,c) in module M as instances *)
-let open_instance =
-  Extension.declare "open_inst" Extension.Context.structure_item
-    Ast_pattern.(pstr @@ pstr_eval (pexp_construct __ __) nil ^:: nil)
-    (fun ~loc ~path:_ lid expop ->
-      let open Ppxlib.Ast_helper in
-      let open Longident in
-      let err ~loc =
-        Location.raise_errorf ~loc "(ppx_fillup) Invalid syntax: %a"
-          Pprintast.expression
-          (Ast_helper.Exp.construct (mkloc ~loc lid) expop)
-      in
-      let str_of_construct ~loc lid = function
-        | Some { pexp_desc = Pexp_tuple l; _ } ->
-            let rec loop acc = function
-              | { pexp_desc = Pexp_ident lid_loc; _ } :: rest ->
-                  rest
-                  |> loop
-                       ((Str.eval
-                        @@ Exp.ident
-                        @@ mkloc ~loc (Ldot (lid, name lid_loc.txt)))
-                       :: acc)
-              | [] -> acc
-              | _ -> err ~loc
-            in
-            loop [] l
-        | Some { pexp_desc = Pexp_ident lid'; _ } ->
-            [ Str.eval @@ Exp.ident @@ mkloc ~loc (Ldot (lid, name lid'.txt)) ]
-        | _ -> err ~loc
-      in
-      let dummy_md_name = mkloc ~loc @@ Some (mk_dummy_md_name ()) in
-      let stri =
-        Str.module_ ~loc
-        @@ Mb.mk ~loc dummy_md_name
-        @@ Mod.structure ~loc (str_of_construct ~loc lid expop)
-      in
-      (* prerr_endline @@ Pprintast.string_of_structure [ stri ]; *)
-      stri)
+(* let open_instance =
+   Extension.declare "open_inst" Extension.Context.structure_item
+     Ast_pattern.(pstr @@ pstr_eval (pexp_construct __ __) nil ^:: nil)
+     (fun ~loc ~path:_ lid expop ->
+       let open Ppxlib.Ast_helper in
+       let open Longident in
+       let err ~loc =
+         Location.raise_errorf ~loc "(ppx_fillup) Invalid syntax: %a"
+           Pprintast.expression
+           (Ast_helper.Exp.construct (mkloc ~loc lid) expop)
+       in
+       let str_of_construct ~loc lid = function
+         | Some { pexp_desc = Pexp_tuple l; _ } ->
+             let rec loop acc = function
+               | { pexp_desc = Pexp_ident lid_loc; _ } :: rest ->
+                   rest
+                   |> loop
+                        ((Str.eval
+                         @@ Exp.ident
+                         @@ mkloc ~loc (Ldot (lid, name lid_loc.txt)))
+                        :: acc)
+               | [] -> acc
+               | _ -> err ~loc
+             in
+             loop [] l
+         | Some { pexp_desc = Pexp_ident lid'; _ } ->
+             [ Str.eval @@ Exp.ident @@ mkloc ~loc (Ldot (lid, name lid'.txt)) ]
+         | _ -> err ~loc
+       in
+       let dummy_md_name = mkloc ~loc @@ Some (mk_dummy_md_name ()) in
+       let stri =
+         Str.module_ ~loc
+         @@ Mb.mk ~loc dummy_md_name
+         @@ Mod.structure ~loc (str_of_construct ~loc lid expop)
+       in
+       (* prerr_endline @@ Pprintast.string_of_structure [ stri ]; *)
+       stri) *)
 
 let transform (str : Parsetree.structure) =
-  (* let str' = *)
   if
     Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
     || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
@@ -91,14 +113,10 @@ let transform (str : Parsetree.structure) =
     (* |> Fillup.alert_mapper *)
     |> Fillup.fillup
     |> Selected_ast.Of_ocaml.copy_structure
-(* in
-   Format.eprintf "%a" Pprintast.structure str';
-      str' *)
 
 let () =
   Driver.register_transformation
-    ~extensions:
-      [ hole; open_instance_toplevel; open_instance_local; open_instance ]
+    ~extensions:[ hole; open_instance_toplevel; open_instance_local ]
     ~instrument:(Driver.Instrument.make transform ~position:After)
     (* ~impl:transform  *)
     "ppx_fillup"

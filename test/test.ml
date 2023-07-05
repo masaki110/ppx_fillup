@@ -18,6 +18,9 @@ module Show = struct
 
   let (show_list [@instance_with_context]) =
    fun inst xs -> "[" ^ String.concat ", " (List.map inst xs) ^ "]"
+
+  let (show_pair [@instance_with_context]) =
+   fun inst1 inst2 (a, b) -> "(" ^ inst1 a ^ inst2 b ^ ")"
 end
 
 let id x = x

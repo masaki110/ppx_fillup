@@ -1,0 +1,6 @@
+(executables
+ (names parsetree_sample firstclass_module)
+ (modules parsetree_sample firstclass_module)
+ (libraries ppxlib base)
+ (preprocess
+  (staged_pps ppxlib.metaquot ppx_fillup)))
