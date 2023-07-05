@@ -49,18 +49,6 @@ let open_instance_local =
            let pat = Pat.var ~loc ~attrs (mknoloc expr) in
            let expr = Exp. ~loc ~ attrs ()
            Str.value ~loc Nonrecursive
-             [ Vb.mk ~loc ~attrs pat expr ]))
-
-
-   let declare_placeholder =
-     Extension.declare "declare_placeholder" Extension.Context.structure_item
-       Ast_pattern.(pstr @@ pstr_eval (pexp_constraint __ __) nil ^:: nil)
-       (fun ~loc ~path:_ (Pconst_string (str, _, Some ":")) ->
-         Ast_helper.(
-           let attrs = [] in
-           let pat = Pat.var ~loc ~attrs (mknoloc expr) in
-           let expr = Exp.expr
-           Str.value ~loc Nonrecursive
              [ Vb.mk ~loc ~attrs pat expr ])) *)
 
 (* [%%open_inst M(a,b,c)], open expressions (a,b,c) in module M as instances *)

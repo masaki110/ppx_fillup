@@ -45,14 +45,12 @@ let digit_alist =
   ]
 
 let _ =
-  (* print "hoge"; *)
-  !!print 123
-(* print ## 123 *)
-(* !print (List.Assoc.find ~?equal digit_alist 6) *)
-(* print ## (List.Assoc.find ##~ equal digit_alist 6);
-   print ## (List.Assoc.find ##~ equal digit_alist 22);
-   print ## (List.Assoc.add ##~ equal digit_alist 0 "zilech") *)
+  !!print (List.Assoc.find !!equal digit_alist 6);
+  !!print (List.Assoc.find !!equal digit_alist 22);
+  !!print (List.Assoc.add !!equal digit_alist 0 "zilech")
 
 (* let _ =
-   (* let (myint [@instance]) = ((module Int) : (int, _) Base.Comparator.Module.t) in *)
-   Set.to_list @@ Set.of_list (module Int) [ 1; 2; 3 ] *)
+   let (myint [@instance]) =
+     ((module Int) : (int, _) Base__.Comparator.Module.t)
+   in
+   Set.to_list @@ Set.of_list __ [ 1; 2; 3 ] *)

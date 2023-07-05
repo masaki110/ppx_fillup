@@ -264,30 +264,55 @@ module Typeless = struct
           @@ mkhole ~loc ~attrs:(Cast.to_ocaml_exp exp).pexp_attributes ()
         in
         match exp.pexp_desc with
+        (* HOLE syntax *)
         | Pexp_ident { txt = Lident "__"; _ } -> hole
+        (* Fillup type cast *)
         (* | Pexp_apply
             ( { pexp_desc = Pexp_ident { txt = Lident "##"; _ }; _ },
               [ (_, arg1); arg2 ] ) ->
             this#expression
             @@ Exp.apply arg1 [ (Nolabel, Exp.apply hole [ arg2 ]) ] *)
-        (* auto fill - type cast *)
         | Pexp_apply
             ( {
                 pexp_desc =
                   Pexp_apply
                     ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
                       [ (_, arg) ] );
+                pexp_attributes;
                 _;
               },
               args ) ->
-            this#expression @@ Exp.apply arg [ (Nolabel, Exp.apply hole args) ]
-        | Pexp_apply
-            ( { pexp_desc = Pexp_ident { txt = Lident "##~"; _ }; _ },
+            let attrs = attrs @ pexp_attributes in
+            this#expression
+            @@ Exp.apply ~loc ~attrs arg [ (Nolabel, Exp.apply hole args) ]
+        (* Fillup label arguments *)
+        (* | Pexp_apply
+            ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
               (_, arg1)
               :: (_, { pexp_desc = Pexp_ident { txt = Lident name; _ }; _ })
               :: args ) ->
             this#expression
-            @@ Exp.apply ~loc ~attrs arg1 ((Labelled name, hole) :: args)
+            @@ Exp.apply ~loc ~attrs arg1 ((Labelled name, hole) :: args) *)
+        | Pexp_apply
+            ( func,
+              ( _,
+                {
+                  pexp_desc =
+                    Pexp_apply
+                      ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
+                        [
+                          ( _,
+                            {
+                              pexp_desc = Pexp_ident { txt = Lident name; _ };
+                              _;
+                            } );
+                        ] );
+                  _;
+                } )
+              :: args ) ->
+            (* _print_expr arg; *)
+            this#expression
+            @@ Exp.apply ~loc ~attrs func ((Labelled name, hole) :: args)
         (* | Pexp_apply
              ( ({ pexp_desc = Pexp_ident { txt = Lident arith; loc }; _ } as
                _exp'),
