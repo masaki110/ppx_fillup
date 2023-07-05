@@ -250,6 +250,12 @@ module Typeless = struct
       inherit Ppxlib.Ast_traverse.map as super
 
       method! expression exp =
+        let _print_expr (exp : Parsetree.expression) =
+          match exp.pexp_desc with
+          | Pexp_ident _ -> Format.eprintf "id  %a\n" Pprintast.expression exp
+          | Pexp_apply _ -> Format.eprintf "app %a\n" Pprintast.expression exp
+          | _ -> ()
+        in
         let open Ast_helper in
         let loc = exp.pexp_loc in
         let attrs = exp.pexp_attributes in
@@ -259,20 +265,29 @@ module Typeless = struct
         in
         match exp.pexp_desc with
         | Pexp_ident { txt = Lident "__"; _ } -> hole
-        | Pexp_apply
+        (* | Pexp_apply
             ( { pexp_desc = Pexp_ident { txt = Lident "##"; _ }; _ },
-              (_, arg1) :: args ) ->
+              [ (_, arg1); arg2 ] ) ->
             this#expression
-            @@ Exp.apply ~loc ~attrs (this#expression arg1)
-                 [ (Nolabel, Exp.apply ~loc hole args) ]
+            @@ Exp.apply arg1 [ (Nolabel, Exp.apply hole [ arg2 ]) ] *)
+        (* auto fill - type cast *)
+        | Pexp_apply
+            ( {
+                pexp_desc =
+                  Pexp_apply
+                    ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
+                      [ (_, arg) ] );
+                _;
+              },
+              args ) ->
+            this#expression @@ Exp.apply arg [ (Nolabel, Exp.apply hole args) ]
         | Pexp_apply
             ( { pexp_desc = Pexp_ident { txt = Lident "##~"; _ }; _ },
               (_, arg1)
               :: (_, { pexp_desc = Pexp_ident { txt = Lident name; _ }; _ })
               :: args ) ->
             this#expression
-            @@ Exp.apply ~loc ~attrs (this#expression arg1)
-                 ((Labelled name, hole) :: args)
+            @@ Exp.apply ~loc ~attrs arg1 ((Labelled name, hole) :: args)
         (* | Pexp_apply
              ( ({ pexp_desc = Pexp_ident { txt = Lident arith; loc }; _ } as
                _exp'),
