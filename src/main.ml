@@ -2,10 +2,10 @@ open Ppxlib
 open Util
 
 (* Declaration of extension [%HOLE] *)
-let hole =
-  Extension.declare "HOLE" Extension.Context.expression
-    Ast_pattern.(pstr nil)
-    (fun ~loc ~path:_ -> mkhole' ~loc ())
+(* let hole =
+   Extension.declare "HOLE" Extension.Context.expression
+     Ast_pattern.(pstr nil)
+     (fun ~loc ~path:_ -> mkhole' ~loc ()) *)
 
 (* open%fillup M, open module as instances *)
 let open_instance_toplevel =
@@ -104,7 +104,7 @@ let transform (str : Parsetree.structure) =
 
 let () =
   Driver.register_transformation
-    ~extensions:[ hole; open_instance_toplevel; open_instance_local ]
+    ~extensions:[ open_instance_toplevel; open_instance_local ]
     ~instrument:(Driver.Instrument.make transform ~position:After)
     (* ~impl:transform  *)
     "ppx_fillup"
