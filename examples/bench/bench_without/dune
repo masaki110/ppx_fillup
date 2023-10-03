@@ -1,5 +1,0 @@
-(test
- (name bench_without)
- (libraries ppxlib base)
- (preprocess
-  (staged_pps ppxlib.metaquot)))

@@ -1,4 +1,0 @@
-(test
- (name bench_tynest)
- (preprocess
-  (staged_pps ppx_fillup)))
