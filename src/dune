@@ -1,10 +1,16 @@
 (library
  (name main)
+ (modules main util fillup compatibility)
  (public_name ppx_fillup)
  (kind ppx_rewriter)
  (libraries ppxlib compiler-libs.common str core)
  (preprocess
   (pps ppxlib.metaquot)))
+
+(library
+ (name calc)
+ (public_name ppx_fillup.calc)
+ (modules calc))
 
 (rule
  (targets compatibility.ml)
