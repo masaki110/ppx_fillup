@@ -26,9 +26,7 @@ end
 open%fillup Show
 open%fillup Eq
 
-open! Base
-
-let print = Stdlib.print_endline
+let print = print_endline
 
 let digit_alist =
   [
@@ -44,13 +42,54 @@ let digit_alist =
     (9, "nine");
   ]
 
-let _ =
-  !!print (List.Assoc.find !!equal digit_alist 6);
-  !!print (List.Assoc.find !!equal digit_alist 22);
-  !!print (List.Assoc.add !!equal digit_alist 0 "zilech")
+let () =
+  let open Base in
+  !!print (List.Assoc.find ~!equal digit_alist 6);
+  !!print (List.Assoc.find ~!equal digit_alist 22);
+  !!print (List.Assoc.add ~!equal digit_alist 0 "zilech")
 
-(* let _ =
-   let (myint [@instance]) =
-     ((module Int) : (int, _) Base__.Comparator.Module.t)
-   in
-   Set.to_list @@ Set.of_list __ [ 1; 2; 3 ] *)
+(* ************************************************** *)
+
+module Mymod = struct
+  open Base
+
+  let myint = ((module Int) : _ Comparator.Module.t)
+  let myfloat = ((module Float) : _ Comparator.Module.t)
+end
+
+open%fillup Mymod;;
+
+Base.Set.of_list Mymod.myint [ 1; 2; 3 ];;
+Base.Set.of_list Mymod.myfloat [ 1.; 2.; 3. ]
+
+(* ************************************************** *)
+
+open Ppxlib;;
+
+let loc = Location.none in
+Format.printf "%a is %a" Pprintast.expression [%expr 1 + 1] Pprintast.core_type
+  [%type: int]
+
+type student = { name : string; id : int } [@@deriving show]
+
+(* ************************************************** *)
+
+module Add = struct
+  let addii = ( + )
+  let addff = ( +. )
+  let addif a b = float_of_int a +. b
+  let addfi a b = a +. float_of_int b
+end
+
+let add inst = inst
+
+open%fillup Add
+
+type point2D = { x : float; y : float }
+
+let (addpp [@instance]) =
+ fun p1 p2 -> { x = ??add p1.x p2.x; y = ??add p1.y p2.y }
+;;
+
+{ x = 3.; y = 5. } == ??add { x = 1.; y = 2. } { x = 2.; y = 3. };;
+[ 13; 35 ] = List.map (??add 1) [ 12; 34 ]

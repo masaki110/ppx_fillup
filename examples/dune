@@ -3,4 +3,4 @@
  (modules parsetree_sample firstclass_module)
  (libraries ppxlib base)
  (preprocess
-  (staged_pps ppxlib.metaquot ppx_fillup)))
+  (staged_pps ppxlib.metaquot ppx_fillup ppx_deriving.std)))
