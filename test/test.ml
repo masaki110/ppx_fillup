@@ -3,135 +3,103 @@
 
 open OUnit2
 
-(* Show *)
+(***** Show **********)
 module Show = struct
-  type msg = Msg of string
-
   let show_int = string_of_int
   let show_float = string_of_float
   let show_string x : string = x
   let show_bool = string_of_bool
-  let show_msg = function Msg x -> x
 
   let (show_option [@instance_with_context]) =
-   fun inst -> function None -> "None" | Some i -> "Some " ^ inst i
+   fun show -> function None -> "None" | Some i -> "Some " ^ show i
 
   let (show_list [@instance_with_context]) =
-   fun inst xs -> "[" ^ String.concat ", " (List.map inst xs) ^ "]"
+   fun show xs -> "[" ^ String.concat ", " (List.map show xs) ^ "]"
 
   let (show_pair [@instance_with_context]) =
-   fun inst1 inst2 (a, b) -> "(" ^ inst1 a ^ inst2 b ^ ")"
+   fun show1 show2 (a, b) -> "(" ^ show1 a ^ show2 b ^ ")"
 end
 
-let id x = x
+let show x : string = x
 
 let test_show _ =
   let open%fillup Show in
-  (* let (show_int [@instance]) = string_of_int in *)
-  let msg = Show.(Msg "msg") in
+  assert_equal "123" (!!show 123);
+  assert_equal "3.14" (!!show 3.14);
+  assert_equal "Hello, World!" (!!show "Hello, World!");
+  assert_equal "true" (!!show true);
 
-  assert_equal "123" id ## 123;
-  assert_equal "1.23" id ## 1.23;
-  assert_equal "abc" id ## "abc";
-  assert_equal "true" id ## true;
-
-  assert_equal "Some 123" id ## (Some 123);
-  assert_equal "None" id ## (None : string option);
-  assert_equal "[123, 456, 789]" id ## [ 123; 456; 789 ];
-  assert_equal "[[1.23, 4.56], [7.89]]" id ## [ [ 1.23; 4.56 ]; [ 7.89 ] ];
-
-  assert_equal "msg" id##msg;
+  assert_equal "Some 123" (!!show (Some 123));
+  assert_equal "[123, 456, 789]" (!!show [ 123; 456; 789 ]);
+  assert_equal "[[1.23, 4.56], [7.89]]" (!!show [ [ 1.23; 4.56 ]; [ 7.89 ] ]);
   ()
 
-(* 3 or more arguments *)
-(* print AST *)
+(****** print AST **********)
 let test_print_ast _ =
-  let open! Ppxlib.Parsetree in
-  let open%fillup Ppxlib.Pprintast in
+  let open Ppxlib.Parsetree in
   let loc = Location.none in
-  assert_equal "1 + 1" id ## [%expr 1 + 1];
-  assert_equal "42 : int" (Format.asprintf "%d : %a" 42 __ [%type: int]);
+  let open%fillup Ppxlib.Pprintast in
+  assert_equal "1 + 1 : int"
+    (Format.asprintf "%a : %a" __ [%expr 1 + 1] __ [%type: int]);
   ()
 
-(* optional arguments *)
-module Eq = struct
-  let eq_int = Int.equal
-  let eq_float = Float.equal
-end
+(***** optional arguments **********)
+type point2D = Pt of int * int
+
+let (equal_point2D [@instance]) =
+ fun (Pt (x1, y1)) (Pt (x2, y2)) -> x1 = x2 && y1 = y2
+
+let plist = [ Pt (1, 2); Pt (5, 8); Pt (2, 9) ]
 
 let test_optional _ =
-  let mem = Base.List.mem in
-  let open%fillup Eq in
-  assert_equal true (mem ##~ equal [ 1; 3; 5 ] 1);
-  assert_equal true (mem ##~ equal [ 1.2; 3.3; 5.3 ] 1.5);
+  let open Base.List in
+  assert_equal true (mem ~!equal plist (Pt (1, 2)));
   ()
 
-(* first-class module *)
-let sort (type s) set l =
-  let module Set = (val set : Set.S with type elt = s) in
-  Set.elements (List.fold_right Set.add l Set.empty)
+(***** first-class module **********)
+module Mymod = struct
+  open Base
 
-let make_set (type s) cmp =
-  let module S = Set.Make (struct
-    type t = s
+  let myint = ((module Int) : _ Comparator.Module.t)
+  let myfloat = ((module Float) : _ Comparator.Module.t)
+end
 
-    let compare = cmp
-  end) in
-  (module S : Set.S with type elt = s)
+let test_first_class_module _ =
+  let open Base.Set in
+  let open Mymod in
+  assert_equal [ 1; 2; 3 ] (to_list (of_list myint [ 1; 2; 3 ]));
+  assert_equal [ 1.2; 3.4; 5.6 ] (to_list (of_list myfloat [ 1.2; 3.4; 5.6 ]))
 
-let (set_int [@instance]) = make_set Int.compare
-let (set_float [@instance]) = make_set Float.compare
+(***** ppx_deriving **********)
+type point2D' = Pt of int * int [@@deriving show, eq, ord]
 
-let first_class_module _ =
-  assert_equal [ 1; 2; 3 ] (sort __ [ 2; 1; 3 ]);
-  assert_equal [ 1.3; 1.8; 2.3 ] (sort __ [ 2.3; 1.8; 1.3 ]);
-  ()
+let plist = [ Pt (1, 2); Pt (5, 8); Pt (2, 9) ]
 
-(* ppx_deriving *)
-type person = { id : int; name : string } [@@deriving show, eq, ord]
-type affiliate = { name : string } [@@deriving show, eq, ord]
-
-let equal ~eq x y = eq x y
-let order ~ord x y = ord x y
-
-let ppx_deriving _ =
+let test_deriving _ =
+  let open Base.List in
   let open%fillup Show in
-  assert_equal "{ Test.id = 13; name = \"ito\" }"
-    id ## { id = 013; name = "ito" };
-  assert_equal "{ Test.name = \"Gifu Univ.\" }" id ## { name = "Gifu Univ." };
-  assert_equal true
-    (equal ##~ eq { name = "Gifu Univ." } { name = "Gifu Univ." });
-  assert_equal 0
-    (order ##~ ord { id = 013; name = "ito" } { id = 013; name = "ito" });
+  assert_equal "(1,2)" (!!show (Pt (1, 2)));
+  assert_equal true (mem ~!equal plist (Pt (1, 2)));
   ()
 
-(* arithmetic*)
-(* module Arith = struct *)
-let (add_int_int [@instance "+"]) = ( + )
-let (add_int_float [@instance "+"]) = fun x y -> float_of_int x +. y
-let (add_float_int [@instance "+"]) = fun x y -> x +. float_of_int y
-let (add_float_float [@instance "+"]) = ( +. )
-let (sub_int_int [@instance "-"]) = ( - )
-let (sub_int_float [@instance "-"]) = fun x y -> float_of_int x -. y
-let (sub_float_int [@instance "-"]) = fun x y -> x -. float_of_int y
-let (sub_float_float [@instance "-"]) = ( -. )
-(* end *)
-
-let test_arith _ =
-  (* let open%fillup Arith in *)
-  (* assert_equal 3 (2 + 2 + 1); *)
-  (* assert_equal ~-1. (2.5 - 1); *)
+(****** arithmetic operation **********)
+let test_arith =
+  let open Calc in
+  (* assert_equal 2 (1 + 1);
+     assert_equal 6.28 (3.14 * 2);
+     assert_equal [ 2; 4; 6 ] (List.map (fun x -> x * 2) [ 1; 2; 3 ]); *)
   ()
 
+(********* run test ***************)
 let _ =
   let tests =
     "Test fillup"
     >::: [
            " show" >:: test_show;
            " print Ast" >:: test_print_ast;
-           " first-class module" >:: first_class_module;
-           " ppx_deriving" >:: ppx_deriving;
-           " arithmetic" >:: test_arith;
+           " first-class module" >:: test_first_class_module;
+           " ppx_deriving" >:: test_deriving;
+           (* " arithmetic" >:: test_arith; *)
          ]
   in
   run_test_tt_main tests

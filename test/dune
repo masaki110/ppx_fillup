@@ -1,5 +1,5 @@
 (test
  (name test)
- (libraries ounit2 ppxlib base)
+ (libraries ounit2 ppxlib base ppx_fillup.calc)
  (preprocess
   (staged_pps ppx_fillup ppxlib.metaquot ppx_deriving.std)))
