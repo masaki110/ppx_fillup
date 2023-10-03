@@ -5,12 +5,23 @@ module Cast = struct
   let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
 end
 
+let return : 'a -> 'a option = fun x -> Some x
+
+and ( >>= ) : 'a option -> ('a -> 'b option) -> 'b option =
+ fun x f -> match x with Some y -> f y | None -> None
+
 (* type path = Multi of int * Path.t | Mono of Path.t *)
 type lpath = { level : int; current_path : Path.t }
 
 type instance =
   | Mono of (Path.t * Types.value_description)
   | Poly of (lpath * Types.value_description)
+
+let print_expr (exp : Parsetree.expression) =
+  match exp.pexp_desc with
+  | Pexp_ident _ -> Format.eprintf "id  %a\n" Pprintast.expression exp
+  | Pexp_apply _ -> Format.eprintf "app %a\n" Pprintast.expression exp
+  | _ -> ()
 
 let show_instances l =
   let show_instance inst =

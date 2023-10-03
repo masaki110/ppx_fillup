@@ -38,29 +38,6 @@ module Typeful = struct
     | None -> super.expr self exp
     | Some e -> mark_alert e
 
-  let texp_is_hole texp =
-    Typedtree.(
-      let match_attrs texp =
-        let rec loop_attrs = function
-          | [] -> None
-          | attr :: rest ->
-              if attr.attr_name.txt = "HOLE" then Some (texp, attr.attr_payload)
-              else loop_attrs rest
-        in
-        match (texp.exp_attributes, texp.exp_extra) with
-        | [], [] -> None
-        | (_ :: _ as attrs), _ -> loop_attrs attrs
-        | _, (_ :: _ as extra) ->
-            let rec loop_extra = function
-              | [] -> None
-              | (_, _, attrs) :: rest ->
-                  let tmp = loop_attrs attrs in
-                  if tmp = None then loop_extra rest else tmp
-            in
-            loop_extra extra
-      in
-      match_attrs texp)
-
   let rec apply_holes n (exp : expression) =
     if n = 0 then exp
     else
@@ -192,13 +169,35 @@ module Typeful = struct
     in
     loop (mk_iset hole.exp_env ~hole_payload)
 
+  let texp_is_hole texp =
+    Typedtree.(
+      let match_attrs texp =
+        let rec loop_attrs = function
+          | [] -> None
+          | attr :: rest ->
+              if attr.attr_name.txt = "HOLE" then Some (texp, attr.attr_payload)
+              else loop_attrs rest
+        in
+        match (texp.exp_attributes, texp.exp_extra) with
+        | [], [] -> None
+        | (_ :: _ as attrs), _ -> loop_attrs attrs
+        | _, (_ :: _ as extra) ->
+            let rec loop_extra = function
+              | [] -> None
+              | (_, _, attrs) :: rest ->
+                  let tmp = loop_attrs attrs in
+                  if tmp = None then loop_extra rest else tmp
+            in
+            loop_extra extra
+      in
+      match_attrs texp)
+
   let replace_instance (super : Untypeast.mapper) (self : Untypeast.mapper)
       (texp : Typedtree.expression) =
     match texp_is_hole texp with
     | None -> super.expr self texp
     | Some (hole, hole_payload) -> (
-        let loc = hole.exp_loc in
-        let attrs = hole.exp_attributes in
+        let loc, attrs = (hole.exp_loc, hole.exp_attributes) in
         match check_instance hole ~hole_payload with
         | [ Mono (p, _) ] -> evar ~loc ~attrs p
         | [ Poly (lp, _) ] ->
@@ -211,33 +210,14 @@ module Typeful = struct
             Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
               Printtyp.type_expr hole.exp_type)
 
-  (* let replace_instance' (super : Untypeast.mapper) (self : Untypeast.mapper)
-       (texp : Typedtree.expression) =
-     match texp_is_hole texp with
-     | None -> super.expr self texp
-     | Some (hole, hole_payload) -> (
-         let loc = hole.exp_loc in
-         let attrs = hole.exp_attributes in
-         match check_instance hole ~hole_payload with
-         | [ Mono (p, _) ] -> evar ~loc ~attrs p
-         | [ Poly (lp, _) ] ->
-             apply_holes lp.level @@ evar ~loc ~attrs lp.current_path
-         | _ -> super.expr self texp) *)
-
   let fillup str =
     (* let cnt = ref 0 in *)
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
-      (* cnt := !cnt + 1; *)
-      (* print_endline (string_of_int !cnt); *)
       let tstr = Compatibility.type_structure env str in
       let str' = untyp_expr_mapper replace_instance tstr in
-      if str = str' then
-        (* let tstr = Compatibility.type_structure env str in
-             untyp_expr_mapper replace_instance tstr *)
-        str'
-      else loop str'
+      if str = str' then str' else loop str'
     in
     loop str
 end
@@ -250,23 +230,16 @@ module Typeless = struct
       inherit Ppxlib.Ast_traverse.map as super
 
       method! expression exp =
-        let _print_expr (exp : Parsetree.expression) =
-          match exp.pexp_desc with
-          | Pexp_ident _ -> Format.eprintf "id  %a\n" Pprintast.expression exp
-          | Pexp_apply _ -> Format.eprintf "app %a\n" Pprintast.expression exp
-          | _ -> ()
-        in
         let open Ast_helper in
-        let loc = exp.pexp_loc in
-        let attrs = exp.pexp_attributes in
+        let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
         let hole =
           Cast.of_ocaml_exp
           @@ mkhole ~loc ~attrs:(Cast.to_ocaml_exp exp).pexp_attributes ()
         in
         match exp.pexp_desc with
-        (* HOLE syntax *)
+        (*** HOLE syntax ***)
         | Pexp_ident { txt = Lident "__"; _ } -> hole
-        (* Fillup type cast *)
+        (*** Fillup type cast ***)
         (* | Pexp_apply
             ( { pexp_desc = Pexp_ident { txt = Lident "##"; _ }; _ },
               [ (_, arg1); arg2 ] ) ->
@@ -277,29 +250,36 @@ module Typeless = struct
                 pexp_desc =
                   Pexp_apply
                     ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
-                      [ (_, arg) ] );
+                      [ (_, func) ] );
                 pexp_attributes;
                 _;
               },
               args ) ->
             let attrs = attrs @ pexp_attributes in
             this#expression
-            @@ Exp.apply ~loc ~attrs arg [ (Nolabel, Exp.apply hole args) ]
-        (* Fillup label arguments *)
-        (* | Pexp_apply
-            ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
-              (_, arg1)
-              :: (_, { pexp_desc = Pexp_ident { txt = Lident name; _ }; _ })
-              :: args ) ->
+            @@ Exp.apply ~loc ~attrs func [ (Nolabel, Exp.apply hole args) ]
+        (*** Fillup any expr ***)
+        | Pexp_apply
+            ( {
+                pexp_desc =
+                  Pexp_apply
+                    ( { pexp_desc = Pexp_ident { txt = Lident "??"; _ }; _ },
+                      [ (_, func) ] );
+                pexp_attributes;
+                _;
+              },
+              args ) ->
+            let attrs = attrs @ pexp_attributes in
             this#expression
-            @@ Exp.apply ~loc ~attrs arg1 ((Labelled name, hole) :: args) *)
+            @@ Exp.apply ~loc ~attrs func ((Nolabel, hole) :: args)
+        (*** Fillup label arguments ***)
         | Pexp_apply
             ( func,
               ( _,
                 {
                   pexp_desc =
                     Pexp_apply
-                      ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
+                      ( { pexp_desc = Pexp_ident { txt = Lident "~!"; _ }; _ },
                         [
                           ( _,
                             {
@@ -310,25 +290,26 @@ module Typeless = struct
                   _;
                 } )
               :: args ) ->
-            (* _print_expr arg; *)
             this#expression
             @@ Exp.apply ~loc ~attrs func ((Labelled name, hole) :: args)
-        (* | Pexp_apply
-             ( ({ pexp_desc = Pexp_ident { txt = Lident arith; loc }; _ } as
-               _exp'),
-               args )
-           when List.mem arith [ "+"; "-"; "*"; "/" ] ->
-             this#expression
-             @@ Exp.apply ~loc ~attrs
-                  (mkhole ~loc ~attrs
-                     ~payload:
-                       (PStr
-                          [
-                            Str.eval
-                            @@ Exp.constant (Pconst_string (arith, loc, None));
-                          ])
-                     ())
-                  args *)
+        (*** Arithmetic ***)
+        | Pexp_apply
+            ( ({ pexp_desc = Pexp_ident { txt = Lident arith; _ }; _ } as _exp'),
+              args )
+          when List.mem arith [ "+"; "-"; "*"; "/" ] ->
+            print_endline "calc";
+            (* super#expression exp *)
+            this#expression
+            @@ Exp.apply ~loc ~attrs
+                 (mkhole ~loc ~attrs
+                    ~payload:
+                      (PStr
+                         [
+                           Str.eval
+                           @@ Exp.constant (Pconst_string (arith, loc, None));
+                         ])
+                    ())
+                 args
         | _ -> super#expression exp
     end
 end
