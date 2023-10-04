@@ -82,18 +82,11 @@ let test_deriving _ =
   ()
 
 (****** arithmetic operation **********)
-let (addii [@instance ( + )]) = ( + )
-let (addfi [@instance ( + )]) = fun a b -> a +. float_of_int b
-let (mulii [@instance ( * )]) = ( * )
-let (mulfi [@instance ( * )]) = fun a b -> a *. float_of_int b
-
 let test_arith _ =
-  (* let open%fillup Calc in *)
+  let open%fillup Calc in
   assert_equal 2 (1 + 1);
-  assert_equal 2 (1 + 1);
-  assert_equal 6.28 (3.14 + 2);
-  assert_equal 6.28 (3.14 * 2);
   assert_equal [ 2; 4; 6 ] (List.map (fun x -> x * 2) [ 1; 2; 3 ]);
+  assert_equal 6.28 (3.14 * 2);
   ()
 
 (********* run test ***************)

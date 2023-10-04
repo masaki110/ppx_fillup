@@ -17,6 +17,9 @@ type instance =
   | Mono of (Path.t * Types.value_description)
   | Poly of (lpath * Types.value_description)
 
+let instance_mono = "instance"
+let instance_poly = "instance_with_context"
+
 let print_expr (exp : Parsetree.expression) =
   match exp.pexp_desc with
   | Pexp_ident _ -> Format.eprintf "id  %a\n" Pprintast.expression exp
