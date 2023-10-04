@@ -3,7 +3,7 @@
  (modules main util fillup compatibility)
  (public_name ppx_fillup)
  (kind ppx_rewriter)
- (libraries ppxlib compiler-libs.common str core)
+ (libraries ppxlib compiler-libs.common str)
  (preprocess
   (pps ppxlib.metaquot)))
 
