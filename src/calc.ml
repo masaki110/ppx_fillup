@@ -1,27 +1,18 @@
-module Add = struct
-  let addii = ( + )
-  let addff = ( +. )
-  let addif a b = float_of_int a +. b
-  let addfi a b = a +. float_of_int b
-end
+[@@@warnerror "-32"]
 
-module Sub = struct
-  let subii = ( - )
-  let subff = ( -. )
-  let subif a b = float_of_int a -. b
-  let subfi a b = a -. float_of_int b
-end
-
-module Mul = struct
-  let mulii = ( * )
-  let mulff = ( *. )
-  let mulif a b = float_of_int a *. b
-  let mulfi a b = a *. float_of_int b
-end
-
-module Div = struct
-  let mulii = ( / )
-  let mulff = ( /. )
-  let mulif a b = float_of_int a /. b
-  let mulfi a b = a /. float_of_int b
-end
+let (addii [@instance ( + )]) = ( + )
+let (addff [@instance ( + )]) = ( +. )
+let (addif [@instance ( + )]) = fun a b -> float_of_int a +. b
+let (addfi [@instance ( + )]) = fun a b -> a +. float_of_int b
+let (subii [@instance ( - )]) = ( - )
+let (subff [@instance ( - )]) = ( -. )
+let (subif [@instance ( - )]) = fun a b -> float_of_int a -. b
+let (subfi [@instance ( - )]) = fun a b -> a -. float_of_int b
+let (mulii [@instance ( * )]) = ( * )
+let (mulff [@instance ( * )]) = ( *. )
+let (mulif [@instance ( * )]) = fun a b -> float_of_int a *. b
+let (mulfi [@instance ( * )]) = fun a b -> a *. float_of_int b
+let (divii [@instance ( / )]) = ( / )
+let (divff [@instance ( / )]) = ( /. )
+let (divif [@instance ( / )]) = fun a b -> float_of_int a /. b
+let (divfi [@instance ( / )]) = fun a b -> a /. float_of_int b
