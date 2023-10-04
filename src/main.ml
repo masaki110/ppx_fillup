@@ -87,7 +87,6 @@ let open_instance_local =
          @@ Mb.mk ~loc dummy_md_name
          @@ Mod.structure ~loc (str_of_construct ~loc lid expop)
        in
-       (* prerr_endline @@ Pprintast.string_of_structure [ stri ]; *)
        stri) *)
 
 let transform (str : Parsetree.structure) =

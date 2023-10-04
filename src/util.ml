@@ -21,7 +21,8 @@ let print_expr (exp : Parsetree.expression) =
   match exp.pexp_desc with
   | Pexp_ident _ -> Format.eprintf "id  %a\n" Pprintast.expression exp
   | Pexp_apply _ -> Format.eprintf "app %a\n" Pprintast.expression exp
-  | _ -> ()
+  | Pexp_constant _ -> Format.eprintf "const %a\n" Pprintast.expression exp
+  | _ -> prerr_endline "other exp"
 
 let show_instances l =
   let show_instance inst =
