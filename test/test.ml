@@ -1,5 +1,4 @@
-(* don't make preprocessor warnings as errors *)
-(* [@@@warnerror "-22"] *)
+[@@@warnerror "-22"]
 
 open OUnit2
 
@@ -78,16 +77,21 @@ let plist = [ Pt (1, 2); Pt (5, 8); Pt (2, 9) ]
 let test_deriving _ =
   let open Base.List in
   let open%fillup Show in
-  assert_equal "(1,2)" (!!show (Pt (1, 2)));
+  assert_equal "(Test.Pt (1, 2))" (!!show (Pt (1, 2)));
   assert_equal true (mem ~!equal plist (Pt (1, 2)));
   ()
 
 (****** arithmetic operation **********)
-let test_arith =
-  (* let open Calc in
-     assert_equal 2 (1 + 1);
-     assert_equal 6.28 (3.14 * 2);
-     assert_equal [ 2; 4; 6 ] (List.map (fun x -> x * 2) [ 1; 2; 3 ]); *)
+let (addii [@instance ( + )]) = ( + )
+let (mulii [@instance ( * )]) = ( * )
+let (mulfi [@instance ( * )]) = fun a b -> a *. float_of_int b
+
+let test_arith _ =
+  (* let open%fillup Calc in *)
+  assert_equal 2 (1 + 1);
+  assert_equal 2 (1 + 1);
+  assert_equal 6.28 (3.14 * 2);
+  assert_equal [ 2; 4; 6 ] (List.map (fun x -> x * 2) [ 1; 2; 3 ]);
   ()
 
 (********* run test ***************)
@@ -99,7 +103,7 @@ let _ =
            " print Ast" >:: test_print_ast;
            " first-class module" >:: test_first_class_module;
            " ppx_deriving" >:: test_deriving;
-           (* " arithmetic" >:: test_arith; *)
+           " arithmetic" >:: test_arith;
          ]
   in
   run_test_tt_main tests
