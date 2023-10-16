@@ -1,6 +1,0 @@
-;; 参考 : https://tarides.com/blog/2019-05-09-an-introduction-to-ocaml-ppx-ecosystem
-
-(executable
- (name rewriter)
- (modules rewriter)
- (libraries pp_rewriter ppxlib))
