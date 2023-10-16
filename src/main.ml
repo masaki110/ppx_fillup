@@ -8,6 +8,12 @@ open Util
      (fun ~loc ~path:_ -> mkhole' ~loc ()) *)
 
 (* open%fillup M, open module as instances *)
+let mk_dummy_md_name =
+  let cnt = ref 0 in
+  fun () ->
+    cnt := !cnt + 1;
+    "Dummy_module_fillup" ^ string_of_int !cnt
+
 let open_instance_toplevel =
   Extension.declare "fillup" Extension.Context.structure_item
     Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
@@ -105,5 +111,4 @@ let () =
   Driver.register_transformation
     ~extensions:[ open_instance_toplevel; open_instance_local ]
     ~instrument:(Driver.Instrument.make transform ~position:After)
-    (* ~impl:transform  *)
     "ppx_fillup"
