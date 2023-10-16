@@ -5,8 +5,10 @@ module Cast = struct
   let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
 end
 
-let mkloc ~loc txt = Location.{ txt; loc }
-let mknoloc txt = mkloc ~loc:Location.none txt
+(* let default_loc = !Ast_helper.default_loc *)
+(* let mkloc ~loc txt = Location.{ txt; loc } *)
+let mkloc ?(loc = !Ast_helper.default_loc) x = Location.mkloc x loc
+let mknoloc = Location.mknoloc
 
 let expr_mapper f str =
   let super = Ast_mapper.default_mapper in
@@ -30,6 +32,8 @@ let lid_of_path path =
 
 let evar ~loc ~attrs path =
   Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lid_of_path path
+
+(* ***************************************************** *)
 
 open Parsetree
 
@@ -63,6 +67,12 @@ let show_instances l =
     | i :: rest -> loop (acc ^ show_instance i ^ ",\n  ") rest
   in
   loop "[ " l
+
+let mk_dummy_md_name =
+  let cnt = ref 0 in
+  fun () ->
+    cnt := !cnt + 1;
+    "Dummy_module_fillup" ^ string_of_int !cnt
 
 exception Invalid_payload
 

@@ -83,7 +83,6 @@ let test_deriving _ =
 
 (****** arithmetic operation **********)
 let test_arith _ =
-  let open%fillup Calc in
   assert_equal 2 (1 + 1);
   assert_equal [ 2; 4; 6 ] (List.map (fun x -> x * 2) [ 1; 2; 3 ]);
   assert_equal 6.28 (3.14 * 2);

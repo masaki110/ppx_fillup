@@ -50,22 +50,23 @@ module Typeful = struct
   let get_iset { hole_texp; hole_cls } =
     let env = hole_texp.exp_env in
     let search_mdvals md =
-      let rec find_instance path md =
-        let check_sig path acc = function
-          | Types.Sig_value (ident, sig_desc, _) ->
-              let name = Ident.name ident in
-              let path = Path.Pdot (path, name) in
-              collect_inst ~exc:Include env name path sig_desc acc
-          | _ -> acc
+      Types.(
+        let rec find_instance path md =
+          let check_sig path acc = function
+            | Sig_value (ident, sig_desc, _) ->
+                let name = Ident.name ident in
+                let path = Path.Pdot (path, name) in
+                collect_inst ~exc:Include env name path sig_desc acc
+            | _ -> acc
+          in
+          match md.md_type with
+          | Mty_signature sg -> List.fold_left (check_sig path) [] sg
+          | Mty_alias p -> find_instance p (Env.find_module p env)
+          | _ -> []
         in
-        match md.Types.md_type with
-        | Mty_signature sg -> List.fold_left (check_sig path) [] sg
+        match md.md_type with
         | Mty_alias p -> find_instance p (Env.find_module p env)
-        | _ -> []
-      in
-      match md.Types.md_type with
-      | Mty_alias p -> find_instance p (Env.find_module p env)
-      | _ -> []
+        | _ -> [])
     in
     let resolve_dummy_md env =
       let dummy_md env =
@@ -189,10 +190,24 @@ module Typeful = struct
   let fillup str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
+    (*** add 'open%fillup Pkg.Op' ***)
+    let str =
+      Ast_helper.(
+        (Str.module_
+        @@ Mb.mk
+             (mkloc (Some (mk_dummy_md_name ())))
+             (Mod.ident
+             @@ mkloc
+             @@ Longident.Ldot (Longident.Lident "Pkg", "Op")))
+        :: str)
+    in
     let rec loop str =
       let tstr = Compatibility.type_structure env str in
       let str' = untyp_expr_mapper instance_replace_hole tstr in
-      if str = str' then str' else loop str'
+      if str = str' then
+        (* (function | [] -> () | x::_ -> Location.print_loc "%a" x.pstr_loc) *)
+        str'
+      else loop str'
     in
     loop str
 end
@@ -215,11 +230,6 @@ module Typeless = struct
         (*** HOLE syntax ***)
         | Pexp_ident { txt = Lident "__"; _ } -> hole
         (*** Fillup type cast ***)
-        (* | Pexp_apply
-            ( { pexp_desc = Pexp_ident { txt = Lident "##"; _ }; _ },
-              [ (_, arg1); arg2 ] ) ->
-            this#expression
-            @@ Exp.apply arg1 [ (Nolabel, Exp.apply hole [ arg2 ]) ] *)
         | Pexp_apply
             ( {
                 pexp_desc =
