@@ -74,6 +74,17 @@ let mk_dummy_md_name =
     cnt := !cnt + 1;
     "Dummy_module_fillup" ^ string_of_int !cnt
 
+let is_arith txt = List.mem txt [ "+"; "-"; "*"; "/" ]
+
+exception Not_Arithmetic_Operator
+
+let which_arith = function
+  | Some "+" -> "addii"
+  | Some "-" -> "subii"
+  | Some "*" -> "mulii"
+  | Some "/" -> "divii"
+  | Some _ | None -> raise Not_Arithmetic_Operator
+
 exception Invalid_payload
 
 let get_class : attribute -> class_name =
@@ -144,7 +155,7 @@ let collect_inst ~exc env name path desc acc =
 let mkhole =
   let cnt = ref 0 in
   let open Ast_helper in
-  fun ~loc ?(attrs = []) ?(payload = PStr []) () ->
+  fun ?(loc = !Ast_helper.default_loc) ?(attrs = []) ?(payload = PStr []) () ->
     cnt := !cnt + 1;
     {
       (Cast.to_ocaml_exp
