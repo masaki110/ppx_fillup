@@ -1,0 +1,5 @@
+(executables
+ (names minimum_sample firstclass_module)
+ (libraries ppx_fillup ppxlib base)
+ (preprocess
+  (staged_pps ppx_fillup ppxlib.metaquot ppx_deriving.std)))
