@@ -1,5 +1,5 @@
 (library
- (name main)
+ (name ppx_fillup)
  (public_name ppx_fillup)
  (kind ppx_rewriter)
  (libraries ppxlib compiler-libs.common str)

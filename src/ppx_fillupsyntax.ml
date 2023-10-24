@@ -88,21 +88,3 @@ let open_instance_local =
          @@ Mod.structure ~loc (str_of_construct ~loc lid expop)
        in
        stri) *)
-
-let transform (str : Parsetree.structure) =
-  if
-    Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
-    || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-  then Fillup.preprocess str
-  else
-    Fillup.preprocess str
-    |> Selected_ast.To_ocaml.copy_structure
-    (* |> Fillup.alert_mapper *)
-    |> Fillup.fillup
-    |> Selected_ast.Of_ocaml.copy_structure
-
-let () =
-  Driver.register_transformation
-    ~extensions:[ open_instance_toplevel; open_instance_local ]
-    ~instrument:(Driver.Instrument.make transform ~position:After)
-    "ppx_fillup"
