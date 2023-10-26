@@ -101,7 +101,7 @@ module Typeful = struct
   let check_instance hole =
     let match_instance env hole_texp ctx_inst =
       match ctx_inst with
-      | Poly { lpath; desc; cls } -> begin
+      | Poly { lpath; desc; cls } -> (
           let rec loop path texp =
             let inst_desc = Compatibility.repr_type env texp in
             match inst_desc with
@@ -119,8 +119,7 @@ module Typeful = struct
           in
           match loop lpath.path desc.val_type with
           | Some lpath -> Some (Poly { lpath; desc; cls })
-          | None -> None
-        end
+          | None -> None)
       | Mono { desc; _ } ->
           if Compatibility.match_type env hole_texp desc.val_type then
             Some ctx_inst
@@ -149,8 +148,8 @@ module Typeful = struct
                   try get_class attr
                   with Invalid_payload ->
                     Location.raise_errorf ~loc:attr.attr_loc
-                      "(ppx_fillup) Illigal HOLE payload: %a" Pprintast.payload
-                      attr.attr_payload
+                      "(ppx_fillup) Illigal HOLE payload: %s"
+                      (show_payload attr.attr_payload)
                 in
                 Some { hole_texp; hole_cls }
               else attr_is_hole (attr :: acc) rest
@@ -182,8 +181,8 @@ module Typeful = struct
               apply_holes lpath.level @@ evar ~loc ~attrs lpath.path
           | _ :: _ as l ->
               Location.raise_errorf ~loc
-                "(ppx_fillup) Instance overlapped: %a \n[ %s ]"
-                Printtyp.type_expr hole_texp.exp_type (show_instances l)
+                "(ppx_fillup) Instance overlapped: %a \n %s " Printtyp.type_expr
+                hole_texp.exp_type (show_instances l)
           | [] ->
               let arith_cls =
                 try which_arith hole_cls
@@ -208,7 +207,7 @@ module Typeful = struct
 end
 
 module Typeless = struct
-  (* open Ppxlib *)
+  open Ppxlib
 
   class preprocess =
     object (this)
@@ -287,23 +286,24 @@ module Typeless = struct
           when is_arith name ->
             this#expression
             @@ Exp.apply ~attrs:pexp_attributes
-                 (mkhole ~payload:(PStr [ Str.eval exp ]) ())
+                 (mkhole'
+                    ~payload:(PStr (Cast.to_ocaml_str [ Str.eval exp ]))
+                    ())
                  args
         | _ -> super#expression exp
     end
-end
 
-let transform (str : Parsetree.structure) =
-  (* let alert_mapper = expr_mapper Typeful.alert_filled in *)
-  let preprocess = (new Typeless.preprocess)#structure in
-  Ppxlib.(
-    if
-      Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
-      || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-    then preprocess str
-    else
-      preprocess str
-      |> Selected_ast.To_ocaml.copy_structure
-      (* |> alert_mapper *)
-      |> Typeful.fillup
-      |> Selected_ast.Of_ocaml.copy_structure)
+  let transform (str : Parsetree.structure) =
+    Ppxlib.(
+      (* let alert_mapper = expr_mapper Typeful.alert_filled in *)
+      let preprocess = (new preprocess)#structure in
+      if
+        Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+        || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+      then preprocess str
+      else
+        preprocess str |> Selected_ast.To_ocaml.copy_structure
+        (* |> alert_mapper *)
+        |> Typeful.fillup
+        |> Selected_ast.Of_ocaml.copy_structure)
+end

@@ -1,10 +1,3 @@
-module Cast = struct
-  open Ppxlib
-
-  let to_ocaml_exp = Selected_ast.To_ocaml.copy_expression
-  let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
-end
-
 (* let default_loc = !Ast_helper.default_loc *)
 (* let mkloc ~loc txt = Location.{ txt; loc } *)
 let mkloc ?(loc = !Ast_helper.default_loc) x = Location.mkloc x loc
@@ -20,15 +13,7 @@ let untyp_expr_mapper f tstr =
   let self = { super with expr = f super } in
   self.structure self tstr
 
-let lid_of_path path =
-  let rec loop =
-    Path.(
-      function
-      | Pident id -> Longident.Lident (Ident.name id)
-      | Pdot (p, str) -> Longident.Ldot (loop p, str)
-      | Papply (p1, p2) -> Longident.Lapply (loop p1, loop p2))
-  in
-  loop path
+let lid_of_path = Compatibility.lid_of_path
 
 let evar ~loc ~attrs path =
   Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lid_of_path path
@@ -53,18 +38,18 @@ let mono_instance = "instance"
 let poly_instance = "instance_with_context"
 
 let show_instance inst =
-  let show_cls = function None -> "None" | Some s -> s in
+  let show_cls = function None -> "" | Some s -> "(Class " ^ s ^ ")" in
   let lpath_name lp = Path.name lp.path in
   match inst with
   | Mono inst | Poly inst ->
-      Format.asprintf "(Class %s) %s : %a" (show_cls inst.cls)
-        (lpath_name inst.lpath) Printtyp.type_expr inst.desc.val_type
+      Format.asprintf "%s %s : %a" (show_cls inst.cls) (lpath_name inst.lpath)
+        Printtyp.type_expr inst.desc.val_type
 
 let show_instances l =
   let rec loop acc = function
     | [] -> "[]"
     | [ i ] -> acc ^ show_instance i ^ " ]"
-    | i :: rest -> loop (acc ^ show_instance i ^ ",\n  ") rest
+    | i :: rest -> loop (acc ^ show_instance i ^ ",\n   ") rest
   in
   loop "[ " l
 
@@ -104,6 +89,10 @@ let get_class : attribute -> class_name =
 
 type handle_exc_inst = Include | Exclude
 
+let show_payload = function
+  | PStr str -> Pprintast.string_of_structure str
+  | _ -> ""
+
 let collect_inst ~exc env name path desc acc =
   let get_inst inst_name attrs =
     let rec loop = function
@@ -114,8 +103,8 @@ let collect_inst ~exc env name path desc acc =
               (try get_class attr
                with Invalid_payload ->
                  Location.raise_errorf ~loc:attr.attr_loc
-                   "(ppx_fillup) Illigal Instance payload: %a" Pprintast.payload
-                   attr.attr_payload)
+                   "(ppx_fillup) Illigal Instance payload: %s"
+                   (show_payload attr.attr_payload))
           else loop attrs
     in
     loop attrs
@@ -134,7 +123,7 @@ let collect_inst ~exc env name path desc acc =
   Types.(
     match get_inst mono_instance desc.val_attributes with
     | Some cls -> Mono { lpath; desc; cls } :: acc
-    | None -> begin
+    | None -> (
         match get_inst poly_instance desc.val_attributes with
         | Some cls -> Poly { lpath; desc; cls } :: acc
         | None -> (
@@ -149,22 +138,33 @@ let collect_inst ~exc env name path desc acc =
             else
               match exc with
               | Include -> Mono { lpath; desc; cls = None } :: acc
-              | Exclude -> acc)
-      end)
+              | Exclude -> acc)))
+
+module Cast = struct
+  open Ppxlib
+
+  let to_ocaml_exp = Selected_ast.To_ocaml.copy_expression
+  let to_ocaml_str = Selected_ast.To_ocaml.copy_structure
+  let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
+  let of_ocaml_str = Selected_ast.Of_ocaml.copy_structure
+end
 
 let mkhole =
-  let cnt = ref 0 in
-  let open Ast_helper in
-  fun ?(loc = !Ast_helper.default_loc) ?(attrs = []) ?(payload = PStr []) () ->
-    cnt := !cnt + 1;
-    {
-      (Cast.to_ocaml_exp
-         [%expr
-           (assert false
-             : [%t
-                 Ppxlib.Ast_helper.Typ.var @@ "fillup_hole" ^ string_of_int !cnt])])
-      with
-      pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
-    }
+  Ast_helper.(
+    let cnt = ref 0 in
+    fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
+      cnt := !cnt + 1;
+      {
+        (Cast.to_ocaml_exp
+           [%expr
+             (assert false
+               : [%t
+                   Ppxlib.Ast_helper.Typ.var @@ "fillup_hole"
+                   ^ string_of_int !cnt])])
+        with
+        pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
+      })
 
-let mkhole' ~loc ?(attrs = []) () = Cast.of_ocaml_exp @@ mkhole ~loc ~attrs ()
+let mkhole' ?(loc = !Ast_helper.default_loc) ?(attrs = []) ?(payload = PStr [])
+    () =
+  Cast.of_ocaml_exp @@ mkhole ~loc ~attrs ~payload ()

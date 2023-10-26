@@ -22,5 +22,6 @@ let () =
     register_transformation
       ~extensions:
         Ppx_fillupsyntax.[ open_instance_toplevel; open_instance_local ]
-      ~instrument:(Instrument.make Ppx_filluplib.transform ~position:After)
+      ~instrument:
+        (Instrument.make Ppx_filluplib.Typeless.transform ~position:After)
       "ppx_fillup")
