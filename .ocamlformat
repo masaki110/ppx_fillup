@@ -1,6 +1,0 @@
-# version = 0.23.0
-profile = conventional
-break-infix = fit-or-vertical
-parse-docstrings = true
-indicate-multiline-delimiters = no
-exp-grouping=preserve
