@@ -3,6 +3,21 @@ open Util
 module Typeful = struct
   open Parsetree
 
+  type class_name = string option
+  type hole = { hole_texp : Typedtree.expression; hole_cls : class_name }
+  type lpath = { level : int; path : Path.t }
+
+  type instance = {
+    lpath : lpath;
+    desc : Types.value_description;
+    cls : class_name;
+  }
+
+  type ctx_instance = Mono of instance | Poly of instance
+
+  let mono_instance = "instance"
+  let poly_instance = "instance_with_context"
+
   (* let alert_filled (super : Ast_mapper.mapper) self (exp : Parsetree.expression)
        =
      let mark_alert exp =
@@ -46,6 +61,89 @@ module Typeful = struct
           exp with
           pexp_desc = Pexp_apply (exp, [ (Nolabel, mkhole ~loc ~attrs ()) ]);
         }
+
+  let show_instance inst =
+    let show_cls = function None -> "" | Some s -> "(Class " ^ s ^ ")" in
+    let lpath_name lp = Path.name lp.path in
+    match inst with
+    | Mono inst | Poly inst ->
+        Format.asprintf "%s %s : %a" (show_cls inst.cls) (lpath_name inst.lpath)
+          Printtyp.type_expr inst.desc.val_type
+
+  let show_instances l =
+    let rec loop acc = function
+      | [] -> "[]"
+      | [ i ] -> acc ^ show_instance i ^ " ]"
+      | i :: rest -> loop (acc ^ show_instance i ^ ",\n   ") rest
+    in
+    loop "[ " l
+
+  exception Invalid_payload
+
+  let get_class : attribute -> class_name =
+   fun attr ->
+    match attr.attr_payload with
+    | PStr [] -> None
+    | PStr
+        [
+          {
+            pstr_desc =
+              Pstr_eval
+                ({ pexp_desc = Pexp_ident { txt = Lident id; _ }; _ }, []);
+            _;
+          };
+        ] ->
+        Some id
+    | _ -> raise Invalid_payload
+
+  type handle_exc_inst = Include | Exclude
+
+  let collect_inst ~exc env name path desc acc =
+    let get_inst inst_name attrs =
+      let rec loop = function
+        | [] -> None
+        | attr :: attrs ->
+            if attr.attr_name.txt = inst_name then
+              Some
+                (try get_class attr
+                 with Invalid_payload ->
+                   Location.raise_errorf ~loc:attr.attr_loc
+                     "(ppx_fillup) Illigal Instance payload: %s"
+                     (show_payload attr.attr_payload))
+            else loop attrs
+      in
+      loop attrs
+    in
+    let types_derived =
+      Env.fold_types
+        (fun name _ decl acc ->
+          if
+            decl.type_attributes
+            |> List.exists (fun attr -> attr.attr_name.txt = "deriving")
+          then name :: acc
+          else acc)
+        None env []
+    in
+    let lpath = { level = 0; path } in
+    Types.(
+      match get_inst mono_instance desc.val_attributes with
+      | Some cls -> Mono { lpath; desc; cls } :: acc
+      | None -> (
+          match get_inst poly_instance desc.val_attributes with
+          | Some cls -> Poly { lpath; desc; cls } :: acc
+          | None -> (
+              if
+                types_derived
+                |> List.exists (fun ty ->
+                       Str.(
+                         string_match
+                           (regexp ("\\(show\\|pp\\|equal\\|compare\\)_" ^ ty))
+                           name 0))
+              then Mono { lpath; desc; cls = None } :: acc
+              else
+                match exc with
+                | Include -> Mono { lpath; desc; cls = None } :: acc
+                | Exclude -> acc)))
 
   let get_iset { hole_texp; hole_cls } =
     let find_instance env path =
@@ -193,17 +291,26 @@ module Typeful = struct
               in
               Ast_helper.Exp.ident ~loc ~attrs
               @@ mknoloc
-              @@ Longident.Ldot (Longident.Lident "Ppx_fillup", arith_cls)))
+              @@ Longident.Ldot (Longident.Lident "Ppx_fillup", arith_cls)
+          (* Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
+             Printtyp.type_expr hole_texp.exp_type *)))
 
   let fillup str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
       let tstr = Compatibility.type_structure env str in
-      let str' = untyp_expr_mapper instance_replace_hole tstr in
+      let str' = untyper instance_replace_hole tstr in
       if str = str' then str' else loop str'
     in
     loop str
+
+  (* let fillup str =
+     Compmisc.init_path ();
+     let env = Compmisc.initial_env () in
+     let tstr = Compatibility.type_structure env str in
+     let str = Untypeast.(untype_structure ~mapper:default_mapper tstr) in
+     str *)
 end
 
 module Typeless = struct
@@ -302,7 +409,8 @@ module Typeless = struct
         || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
       then preprocess str
       else
-        preprocess str |> Selected_ast.To_ocaml.copy_structure
+        preprocess str
+        |> Selected_ast.To_ocaml.copy_structure
         (* |> alert_mapper *)
         |> Typeful.fillup
         |> Selected_ast.Of_ocaml.copy_structure)
