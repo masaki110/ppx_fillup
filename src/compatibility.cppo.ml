@@ -1,28 +1,21 @@
 #if OCAML_VERSION >= (5, 1, 0)
 
-  let lid_of_path path =
-    let rec loop =
-      Path.(
-        function
-        | Pident id -> Longident.Lident (Ident.name id)
-        | Pdot (p, str) -> Longident.Ldot (loop p, str)
-        | Papply (p1, p2) -> Longident.Lapply (loop p1, loop p2)
-        | Pextra_ty (p, Pcstr_ty txt) -> Longident.Ldot (loop p, txt)
-        | Pextra_ty (p, Pext_ty) -> loop p)
-    in
-    loop path
+  let rec lident_of_path = function
+  | Path.Pident id -> Longident.Lident (Ident.name id)
+  | Path.Papply (p1, p2) ->
+      Longident.Lapply (lident_of_path p1, lident_of_path p2)
+  | Path.Pdot (p, s) | Path.Pextra_ty (p, Pcstr_ty s) ->
+      Longident.Ldot (lident_of_path p, s)
+  | Path.Pextra_ty (p, _) -> lident_of_path p
 
 # else
 
-  let lid_of_path path =
-    let rec loop =
-      Path.(
-        function
-        | Pident id -> Longident.Lident (Ident.name id)
-        | Pdot (p, str) -> Longident.Ldot (loop p, str)
-        | Papply (p1, p2) -> Longident.Lapply (loop p1, loop p2))
-    in
-    loop path
+  let rec lident_of_path = function
+  | Path.Pident id -> Longident.Lident (Ident.name id)
+  | Path.Papply (p1, p2) ->
+      Longident.Lapply (lident_of_path p1, lident_of_path p2)
+  | Path.Pdot (p, s) ->
+      Longident.Ldot (lident_of_path p, s)
 
 #endif
 
