@@ -15,13 +15,14 @@ let (divii [@instance ( / )]) = ( / )
 let (divff [@instance ( / )]) = ( /. )
 let (divif [@instance ( / )]) = fun a b -> float_of_int a /. b
 let (divfi [@instance ( / )]) = fun a b -> a /. float_of_int b
+let show (inst : 'a -> string) = inst
 
 (*** ppx rewriter ***)
 let () =
   Ppxlib.Driver.(
     register_transformation
       ~extensions:
-        Ppx_fillupsyntax.[ open_instance_toplevel; open_instance_local ]
+        Ppx_fillupsyntax.[ hole; open_instance_toplevel; open_instance_local ]
       ~instrument:
         (Instrument.make Ppx_filluplib.Typeless.transform ~position:After)
       "ppx_fillup")

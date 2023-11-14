@@ -1,11 +1,13 @@
 open Ppxlib
 open Util
 
-(* Declaration of extension [%HOLE] *)
-(* let hole =
-   Extension.declare "HOLE" Extension.Context.expression
-     Ast_pattern.(pstr nil)
-     (fun ~loc ~path:_ -> mkhole' ~loc ()) *)
+(* Declaration of extension [%H cls] *)
+let hole =
+  Extension.declare "H" Extension.Context.expression
+    Ast_pattern.(pstr @@ pstr_eval __ nil ^:: nil)
+    (fun ~loc ~path:_ expr ->
+      let str = [ { pstr_desc = Pstr_eval (expr, []); pstr_loc = loc } ] in
+      mkhole' ~loc ~payload:(PStr (Cast.to_ocaml_str str)) ())
 
 (* open%fillup M, open module as instances *)
 let open_instance_toplevel =
