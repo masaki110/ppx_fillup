@@ -80,8 +80,7 @@ module Typeful = struct
 
   exception Invalid_payload
 
-  let get_class : attribute -> class_name =
-   fun attr ->
+  let get_class attr =
     match attr.attr_payload with
     | PStr [] -> None
     | PStr
@@ -191,9 +190,8 @@ module Typeful = struct
       loop [] l
     in
     let env = hole_texp.exp_env in
-    let _arith_path = Path.Pident (Ident.create_persistent "Ppx_fillup") in
     match hole_cls with
-    | Some txt when is_arith txt -> check_class (find_instance env _arith_path)
+    | Some txt when is_arith txt -> check_class (find_instance env arith_path)
     | _ -> check_class (search_envvals env @ resolve_dummy_md env)
 
   let check_instance hole =
@@ -237,20 +235,23 @@ module Typeful = struct
   let texp_is_hole texp =
     Typedtree.(
       let match_attrs texp =
-        let rec attr_is_hole acc = function
-          | [] -> None
-          | attr :: rest ->
-              if attr.attr_name.txt = "HOLE" then
-                let hole_texp = { texp with exp_attributes = acc @ rest } in
-                let hole_cls =
-                  try get_class attr
-                  with Invalid_payload ->
-                    Location.raise_errorf ~loc:attr.attr_loc
-                      "(ppx_fillup) Illigal HOLE payload: %s"
-                      (show_payload attr.attr_payload)
-                in
-                Some { hole_texp; hole_cls }
-              else attr_is_hole (attr :: acc) rest
+        let attr_is_hole =
+          let rec loop acc = function
+            | [] -> None
+            | attr :: rest ->
+                if attr.attr_name.txt = "HOLE" then
+                  let hole_texp = { texp with exp_attributes = acc @ rest } in
+                  let hole_cls =
+                    try get_class attr
+                    with Invalid_payload ->
+                      Location.raise_errorf ~loc:attr.attr_loc
+                        "(ppx_fillup) Illigal HOLE payload: %s"
+                        (show_payload attr.attr_payload)
+                  in
+                  Some { hole_texp; hole_cls }
+                else loop (attr :: acc) rest
+          in
+          loop []
         in
         match (texp.exp_attributes, texp.exp_extra) with
         | [], [] -> None
@@ -258,11 +259,11 @@ module Typeful = struct
             let rec loop_extra = function
               | [] -> None
               | (_, _, attrs) :: rest ->
-                  let res = attr_is_hole [] attrs in
+                  let res = attr_is_hole attrs in
                   if res = None then loop_extra rest else res
             in
             loop_extra extra
-        | attrs, _ -> attr_is_hole [] attrs
+        | attrs, _ -> attr_is_hole attrs
       in
       match_attrs texp)
 
@@ -274,7 +275,7 @@ module Typeful = struct
       | Some ({ hole_texp; hole_cls } as hole) -> (
           let loc, attrs = (hole_texp.exp_loc, hole_texp.exp_attributes) in
           match check_instance hole with
-          | [ Mono { lpath; _ } ] -> evar ~loc ~attrs lpath.path
+          | [ Mono { lpath; _ } ] (* -> evar ~loc ~attrs lpath.path *)
           | [ Poly { lpath; _ } ] ->
               apply_holes lpath.level @@ evar ~loc ~attrs lpath.path
           | _ :: _ as l ->
@@ -397,6 +398,15 @@ module Typeless = struct
                     ~payload:(PStr (Cast.to_ocaml_str [ Str.eval exp ]))
                     ())
                  args
+        (*** instance parameter ***)
+        (* | Pexp_apply (exp, args)
+           when List.map (fun (_, exp) -> exp.pexp_attributes) args ->
+             this#expression
+             @@ Exp.apply
+                  (mkhole'
+                     ~payload:(PStr (Cast.to_ocaml_str [ Str.eval exp ]))
+                     ())
+                  args *)
         | _ -> super#expression exp
     end
 

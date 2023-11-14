@@ -32,6 +32,8 @@ let which_arith = function
   | Some "/" -> "divii"
   | _ -> raise Not_Arithmetic_Operator
 
+let arith_path = Path.Pident (Ident.create_persistent "Ppx_fillup")
+
 let mk_dummy_md_name =
   let cnt = ref 0 in
   fun () ->
