@@ -3,44 +3,48 @@ open Util
 
 (* Declaration of extension [%H cls] *)
 let hole =
-  Extension.declare "H" Extension.Context.expression
-    Ast_pattern.(pstr @@ pstr_eval __ nil ^:: nil)
-    (fun ~loc ~path:_ expr ->
-      let str = [ { pstr_desc = Pstr_eval (expr, []); pstr_loc = loc } ] in
-      mkhole' ~loc ~payload:(PStr (Cast.to_ocaml_str str)) ())
+  Context_free.Rule.extension
+  @@ Extension.declare "H" Extension.Context.expression
+       Ast_pattern.(pstr @@ pstr_eval __ nil ^:: nil)
+       (fun ~loc ~path:_ expr ->
+         let str = [ { pstr_desc = Pstr_eval (expr, []); pstr_loc = loc } ] in
+         mkhole' ~loc ~payload:(PStr (Cast.to_ocaml_str str)) ())
 
 (* open%fillup M, open module as instances *)
 let open_instance_toplevel =
-  Extension.declare "fillup" Extension.Context.structure_item
-    Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
-    (fun ~loc ~path:_ md ->
-      let md_exp = md.popen_expr in
-      let dummy_name = mk_dummy_md_name () in
-      {
-        pstr_desc =
-          Pstr_module
-            {
-              pmb_name = mkloc ~loc @@ Some dummy_name;
-              pmb_expr = md_exp;
-              pmb_attributes = [];
-              pmb_loc = loc;
-            };
-        pstr_loc = loc;
-      })
+  Context_free.Rule.extension
+  @@ Extension.declare "fillup" Extension.Context.structure_item
+       Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
+       (fun ~loc ~path:_ md ->
+         let md_exp = md.popen_expr in
+         let dummy_name = mk_dummy_md_name () in
+         {
+           pstr_desc =
+             Pstr_module
+               {
+                 pmb_name = mkloc ~loc @@ Some dummy_name;
+                 pmb_expr = md_exp;
+                 pmb_attributes = [];
+                 pmb_loc = loc;
+               };
+           pstr_loc = loc;
+         })
 
 (* let open%fillup M in e, open module locally as instances *)
 let open_instance_local =
-  Extension.declare "fillup" Extension.Context.expression
-    Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
-    (fun ~loc ~path:_ md expr ->
-      let md_exp = md.popen_expr in
-      let dummy_name = mk_dummy_md_name () in
-      {
-        pexp_desc = Pexp_letmodule (mkloc ~loc @@ Some dummy_name, md_exp, expr);
-        pexp_loc = loc;
-        pexp_loc_stack = [];
-        pexp_attributes = [];
-      })
+  Context_free.Rule.extension
+  @@ Extension.declare "fillup" Extension.Context.expression
+       Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
+       (fun ~loc ~path:_ md expr ->
+         let md_exp = md.popen_expr in
+         let dummy_name = mk_dummy_md_name () in
+         {
+           pexp_desc =
+             Pexp_letmodule (mkloc ~loc @@ Some dummy_name, md_exp, expr);
+           pexp_loc = loc;
+           pexp_loc_stack = [];
+           pexp_attributes = [];
+         })
 
 (* let declare_placeholder =
      Extension.declare "declare_placeholder" Extension.Context.structure_item
