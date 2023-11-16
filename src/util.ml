@@ -20,7 +20,7 @@ let evar ~loc ~attrs path =
   Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lident_of_path path
 
 (* ***************************************************** *)
-
+let hole_name = "HOLE"
 let is_arith txt = List.mem txt [ "+"; "-"; "*"; "/" ]
 
 exception Not_Arithmetic_Operator
@@ -55,8 +55,8 @@ module Cast = struct
   let of_ocaml_str = Selected_ast.Of_ocaml.copy_structure
 end
 
-let mkhole =
-  Ast_helper.(
+(*let mkhole =
+   Ast_helper.(
     let cnt = ref 0 in
     fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
       cnt := !cnt + 1;
@@ -70,7 +70,19 @@ let mkhole =
                    ^ string_of_int !cnt])])
         with
         pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
+      }) *)
+
+(* Exp.ident ~attrs:(Attr.mk (mkloc hole_name) (PStr []) :: attrs)
+   @@ mkloc Longident.(Ldot (Lident "Ppx_fillup", "hole")) *)
+let mkhole =
+  Ast_helper.(
+    fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
+      {
+        (Cast.to_ocaml_exp [%expr Ppx_fillup.hole]) with
+        pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
       })
+(* let _a = (attrs, payload) in *)
+(* Cast.to_ocaml_exp [%expr Ppx_fillup.hole]) *)
 
 let mkhole' ?(loc = !Ast_helper.default_loc) ?(attrs = []) ?(payload = PStr [])
     () =

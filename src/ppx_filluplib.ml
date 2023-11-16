@@ -239,7 +239,7 @@ module Typeful = struct
           let rec loop acc = function
             | [] -> None
             | attr :: rest ->
-                if attr.attr_name.txt = "HOLE" then
+                if attr.attr_name.txt = hole_name then
                   let hole_texp = { texp with exp_attributes = acc @ rest } in
                   let hole_cls =
                     try get_class attr
@@ -344,7 +344,7 @@ module Typeless = struct
               args ) ->
             let attrs = attrs @ pexp_attributes in
             this#expression
-            @@ Exp.apply ~attrs func [ (Nolabel, Exp.apply hole args) ]
+            @@ Exp.apply ~loc ~attrs func [ (Nolabel, Exp.apply hole args) ]
         (*** Fillup any expr ***)
         | Pexp_apply
             ( {
@@ -357,7 +357,8 @@ module Typeless = struct
               },
               args ) ->
             let attrs = attrs @ pexp_attributes in
-            this#expression @@ Exp.apply ~attrs func ((Nolabel, hole) :: args)
+            this#expression
+            @@ Exp.apply ~loc ~attrs func ((Nolabel, hole) :: args)
         (*** Fillup label arguments ***)
         | Pexp_apply
             ( func,
@@ -381,7 +382,7 @@ module Typeless = struct
                 } )
               :: args ) ->
             this#expression
-            @@ Exp.apply ~attrs:pexp_attributes func
+            @@ Exp.apply ~loc ~attrs:pexp_attributes func
                  ((Labelled name, hole) :: args)
         (*** Arithmetic ***)
         | Pexp_apply
@@ -393,7 +394,7 @@ module Typeless = struct
               args )
           when is_arith name ->
             this#expression
-            @@ Exp.apply ~attrs:pexp_attributes
+            @@ Exp.apply ~loc ~attrs:pexp_attributes
                  (mkhole'
                     ~payload:(PStr (Cast.to_ocaml_str [ Str.eval exp ]))
                     ())
@@ -413,13 +414,13 @@ module Typeless = struct
   let transform (str : Parsetree.structure) =
     Ppxlib.(
       (* let alert_mapper = expr_mapper Typeful.alert_filled in *)
-      let preprocess = (new preprocess)#structure in
+      let pp_str = (new preprocess)#structure in
       if
         Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
         || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-      then preprocess str
+      then pp_str str
       else
-        preprocess str
+        pp_str str
         |> Selected_ast.To_ocaml.copy_structure
         (* |> alert_mapper *)
         |> Typeful.fillup
