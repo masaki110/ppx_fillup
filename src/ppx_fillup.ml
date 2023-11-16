@@ -1,3 +1,6 @@
+(*** hole syntax ***)
+let hole = Obj.magic 0
+
 (*** default instance ***)
 let (addii [@instance ( + )]) = ( + )
 let (addff [@instance ( + )]) = ( +. )
@@ -15,14 +18,17 @@ let (divii [@instance ( / )]) = ( / )
 let (divff [@instance ( / )]) = ( /. )
 let (divif [@instance ( / )]) = fun a b -> float_of_int a /. b
 let (divfi [@instance ( / )]) = fun a b -> a /. float_of_int b
-let show (inst : 'a -> string) = inst
 
-(*** ppx rewriter ***)
-let () =
-  Ppxlib.Driver.(
-    register_transformation
-      ~extensions:
-        Ppx_fillupsyntax.[ hole; open_instance_toplevel; open_instance_local ]
-      ~instrument:
-        (Instrument.make Ppx_filluplib.Typeless.transform ~position:After)
-      "ppx_fillup")
+(*** default function ***)
+let show (inst : 'a -> string) = inst
+(* let print (show [@instance]) = ??print_endline *)
+;;
+
+Ppxlib.Driver.(
+  register_transformation
+    ~rules:
+      Ppx_fillupsyntax.[ hole; open_instance_toplevel; open_instance_local ]
+    ~instrument:
+      (Instrument.make Ppx_filluplib.Typeless.transform ~position:After)
+    (* ~impl:Ppx_filluplib.Typeless.transform  *)
+    "ppx_fillup")
