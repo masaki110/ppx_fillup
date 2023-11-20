@@ -12,7 +12,7 @@ let expr_mapper f str =
 
 (* let untyper = Untypeast.default_mapper *)
 let untyper f tstr =
-  let super = MyUntypeast.default_mapper in
+  let super = Compatibility.default_untyper in
   let self = { super with expr = f super } in
   self.structure self tstr
 
