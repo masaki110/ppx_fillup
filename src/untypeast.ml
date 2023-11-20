@@ -297,7 +297,7 @@ let pattern : type k. _ -> k T.general_pattern -> _ =
            The compiler transforms (x:t) into (_ as x : t).
            This avoids transforming a warning 27 into a 26.
         *)
-        | Tpat_alias ({ pat_desc = Tpat_any; pat_loc }, id, name)
+        | Tpat_alias ({ pat_desc = Tpat_any; pat_loc; _ }, id, name)
           when pat_loc = pat.pat_loc -> begin
             match (Ident.name id).[0] with
             | 'A' .. 'Z' -> Ppat_unpack { name with txt = Some name.txt }
@@ -732,7 +732,7 @@ let core_type sub ct =
 
 let class_structure sub cs =
   let rec remove_self = function
-    | { pat_desc = Tpat_alias (p, id, _s) }
+    | { pat_desc = Tpat_alias (p, id, _s); _ }
       when string_is_prefix "selfpat-" (Ident.name id) ->
         remove_self p
     | p -> p
@@ -763,7 +763,7 @@ let object_field sub { of_loc; of_desc; of_attributes } =
   Of.mk ~loc ~attrs desc
 
 and is_self_pat = function
-  | { pat_desc = Tpat_alias (_pat, id, _) } ->
+  | { pat_desc = Tpat_alias (_pat, id, _); _ } ->
       string_is_prefix "self-" (Ident.name id)
   | _ -> false
 
@@ -788,6 +788,7 @@ let class_field sub cf =
           | {
               exp_desc =
                 Texp_function { arg_label = Nolabel; cases = [ case ]; _ };
+              _;
             }
             when is_self_pat case.c_lhs && case.c_guard = None ->
               case.c_rhs
@@ -800,6 +801,7 @@ let class_field sub cf =
           | {
               exp_desc =
                 Texp_function { arg_label = Nolabel; cases = [ case ]; _ };
+              _;
             }
             when is_self_pat case.c_lhs && case.c_guard = None ->
               case.c_rhs
