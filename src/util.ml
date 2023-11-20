@@ -10,7 +10,7 @@ let expr_mapper f str =
 
 (* let untyper = Untypeast.default_mapper *)
 let untyper f tstr =
-  let super = Untypeast.default_mapper in
+  let super = MyUntypeast.default_mapper in
   let self = { super with expr = f super } in
   self.structure self tstr
 
@@ -33,12 +33,13 @@ let which_arith = function
   | _ -> raise Not_Arithmetic_Operator
 
 let arith_path = Path.Pident (Ident.create_persistent "Ppx_fillup")
+let dummy_md_name = "FillupDummyMd"
 
 let mk_dummy_md_name =
   let cnt = ref 0 in
   fun () ->
     cnt := !cnt + 1;
-    "Dummy_module_fillup" ^ string_of_int !cnt
+    dummy_md_name ^ string_of_int !cnt
 
 open Parsetree
 
