@@ -20,9 +20,8 @@ let (divif [@instance ( / )]) = fun a b -> float_of_int a /. b
 let (divfi [@instance ( / )]) = fun a b -> a /. float_of_int b
 
 (*** default function ***)
-let show (inst : 'a -> string) = inst
-(* let print (show [@instance]) = ??print_endline *)
-;;
+let show inst x : string = inst x
+let print show x = print_endline @@ show x;;
 
 Ppxlib.Driver.(
   register_transformation
