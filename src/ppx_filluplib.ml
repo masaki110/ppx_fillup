@@ -171,8 +171,7 @@ module Typeful = struct
       let dummy_md env =
         Env.fold_modules
           (fun name _ md acc ->
-            if Str.(string_match (regexp "Dummy_module_fillup") name 0) then
-              md :: acc
+            if Str.(string_match (regexp dummy_md_name) name 0) then md :: acc
             else acc)
           None env []
       in
@@ -292,17 +291,22 @@ module Typeful = struct
               in
               Ast_helper.Exp.ident ~loc ~attrs
               @@ mknoloc
-              @@ Longident.Ldot (Longident.Lident "Ppx_fillup", arith_cls)
-          (* Location.raise_errorf ~loc "(ppx_fillup) Instance not found: %a"
-             Printtyp.type_expr hole_texp.exp_type *)))
+              @@ Longident.Ldot (Longident.Lident "Ppx_fillup", arith_cls)))
 
   let fillup str =
+    let n = ref 0 in
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
+      n := !n + 1;
       let tstr = Compatibility.type_structure env str in
       let str' = untyper instance_replace_hole tstr in
-      if str = str' then str' else loop str'
+      if str = str' then (
+        (* prerr_endline "done"; *)
+        str')
+      else (
+        (* prerr_endline @@ "loop" ^ string_of_int !n; *)
+        loop str')
     in
     loop str
 end
@@ -389,15 +393,6 @@ module Typeless = struct
             @@ Exp.apply ~loc ~attrs:pexp_attributes
                  (mkhole' ~payload:(PStr (Cast.to_str [ Str.eval exp ])) ())
                  args
-        (*** instance parameter ***)
-        (* | Pexp_apply (exp, args)
-           when List.map (fun (_, exp) -> exp.pexp_attributes) args ->
-             this#expression
-             @@ Exp.apply
-                  (mkhole'
-                     ~payload:(PStr (Cast.to_ocaml_str [ Str.eval exp ]))
-                     ())
-                  args *)
         | _ -> super#expression exp
     end
 
