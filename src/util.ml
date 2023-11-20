@@ -1,3 +1,5 @@
+open Parsetree
+
 (* let default_loc = !Ast_helper.default_loc *)
 (* let mkloc ~loc txt = Location.{ txt; loc } *)
 let mkloc ?(loc = !Ast_helper.default_loc) x = Location.mkloc x loc
@@ -41,8 +43,6 @@ let mk_dummy_md_name =
     cnt := !cnt + 1;
     dummy_md_name ^ string_of_int !cnt
 
-open Parsetree
-
 let show_payload = function
   | PStr str -> Pprintast.string_of_structure str
   | _ -> ""
@@ -56,34 +56,42 @@ module Cast = struct
   let of_str = Selected_ast.Of_ocaml.copy_structure
 end
 
-(*let mkhole =
+(* let mkhole =
    Ast_helper.(
+     let cnt = ref 0 in
+     fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
+       cnt := !cnt + 1;
+       {
+         (Cast.to_exp
+            [%expr
+              (assert false
+                : [%t
+                    Ppxlib.Ast_helper.Typ.var
+                    @@ "fillup_hole"
+                    ^ string_of_int !cnt])])
+         with
+         pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
+       }) *)
+let mkhole =
+  Ast_helper.(
     let cnt = ref 0 in
     fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
       cnt := !cnt + 1;
       {
-        (Cast.to_ocaml_exp
+        (Cast.to_exp
            [%expr
-             (assert false
-               : [%t
-                   Ppxlib.Ast_helper.Typ.var
-                   @@ "fillup_hole"
-                   ^ string_of_int !cnt])])
+             (Ppx_fillup.hole
+               : [%t Ppxlib.Ast_helper.Typ.var @@ "hole" ^ string_of_int !cnt])])
         with
         pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
-      }) *)
-
-(* Exp.ident ~attrs:(Attr.mk (mkloc hole_name) (PStr []) :: attrs)
-   @@ mkloc Longident.(Ldot (Lident "Ppx_fillup", "hole")) *)
-let mkhole =
-  Ast_helper.(
-    fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
-      {
-        (Cast.to_exp [%expr Ppx_fillup.hole]) with
-        pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
       })
-(* let _a = (attrs, payload) in *)
-(* Cast.to_ocaml_exp [%expr Ppx_fillup.hole]) *)
+(* let mkhole =
+   Ast_helper.(
+     fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
+       {
+         (Cast.to_exp [%expr Ppx_fillup.hole]) with
+         pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
+       }) *)
 
 let mkhole' ?(loc = !Ast_helper.default_loc) ?(attrs = []) ?(payload = PStr [])
     () =
