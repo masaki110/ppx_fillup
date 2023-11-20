@@ -8,7 +8,7 @@ let hole =
        Ast_pattern.(pstr @@ pstr_eval __ nil ^:: nil)
        (fun ~loc ~path:_ expr ->
          let str = [ { pstr_desc = Pstr_eval (expr, []); pstr_loc = loc } ] in
-         mkhole' ~loc ~payload:(PStr (Cast.to_ocaml_str str)) ())
+         mkhole' ~loc ~payload:(PStr (Cast.to_str str)) ())
 
 (* open%fillup M, open module as instances *)
 let open_instance_toplevel =

@@ -49,10 +49,10 @@ let show_payload = function
 module Cast = struct
   open Ppxlib
 
-  let to_ocaml_exp = Selected_ast.To_ocaml.copy_expression
-  let to_ocaml_str = Selected_ast.To_ocaml.copy_structure
-  let of_ocaml_exp = Selected_ast.Of_ocaml.copy_expression
-  let of_ocaml_str = Selected_ast.Of_ocaml.copy_structure
+  let to_exp = Selected_ast.To_ocaml.copy_expression
+  let to_str = Selected_ast.To_ocaml.copy_structure
+  let of_exp = Selected_ast.Of_ocaml.copy_expression
+  let of_str = Selected_ast.Of_ocaml.copy_structure
 end
 
 (*let mkhole =
@@ -78,7 +78,7 @@ let mkhole =
   Ast_helper.(
     fun ?(loc = !default_loc) ?(attrs = []) ?(payload = PStr []) () ->
       {
-        (Cast.to_ocaml_exp [%expr Ppx_fillup.hole]) with
+        (Cast.to_exp [%expr Ppx_fillup.hole]) with
         pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
       })
 (* let _a = (attrs, payload) in *)
@@ -86,4 +86,4 @@ let mkhole =
 
 let mkhole' ?(loc = !Ast_helper.default_loc) ?(attrs = []) ?(payload = PStr [])
     () =
-  Cast.of_ocaml_exp @@ mkhole ~loc ~attrs ~payload ()
+  Cast.of_exp @@ mkhole ~loc ~attrs ~payload ()

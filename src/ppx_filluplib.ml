@@ -305,13 +305,6 @@ module Typeful = struct
       if str = str' then str' else loop str'
     in
     loop str
-
-  (* let fillup str =
-     Compmisc.init_path ();
-     let env = Compmisc.initial_env () in
-     let tstr = Compatibility.type_structure env str in
-     let str = Untypeast.(untype_structure ~mapper:default_mapper tstr) in
-     str *)
 end
 
 module Typeless = struct
@@ -325,8 +318,7 @@ module Typeless = struct
         let open Ast_helper in
         let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
         let hole =
-          Cast.of_ocaml_exp
-          @@ mkhole ~loc ~attrs:(Cast.to_ocaml_exp exp).pexp_attributes ()
+          Cast.of_exp @@ mkhole ~loc ~attrs:(Cast.to_exp exp).pexp_attributes ()
         in
         match exp.pexp_desc with
         (*** HOLE syntax ***)
@@ -395,9 +387,7 @@ module Typeless = struct
           when is_arith name ->
             this#expression
             @@ Exp.apply ~loc ~attrs:pexp_attributes
-                 (mkhole'
-                    ~payload:(PStr (Cast.to_ocaml_str [ Str.eval exp ]))
-                    ())
+                 (mkhole' ~payload:(PStr (Cast.to_str [ Str.eval exp ])) ())
                  args
         (*** instance parameter ***)
         (* | Pexp_apply (exp, args)
