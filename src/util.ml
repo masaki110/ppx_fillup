@@ -65,10 +65,7 @@ end
          (Cast.to_exp
             [%expr
               (assert false
-                : [%t
-                    Ppxlib.Ast_helper.Typ.var
-                    @@ "fillup_hole"
-                    ^ string_of_int !cnt])])
+                : [%t Ppxlib.Ast_helper.Typ.var @@ "hole" ^ string_of_int !cnt])])
          with
          pexp_attributes = Attr.mk ~loc { txt = "HOLE"; loc } payload :: attrs;
        }) *)

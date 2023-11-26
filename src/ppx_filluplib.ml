@@ -286,7 +286,7 @@ module Typeful = struct
                 try which_arith hole_cls
                 with Not_Arithmetic_Operator ->
                   Location.raise_errorf ~loc
-                    "(ppx_fillup) Instance not found: %a" Printtyp.type_expr
+                    "(ppx_fillup) Instance not found: %a" Printtyp.type_scheme
                     hole_texp.exp_type
               in
               Ast_helper.Exp.ident ~loc ~attrs
@@ -301,12 +301,7 @@ module Typeful = struct
       n := !n + 1;
       let tstr = Compatibility.type_structure env str in
       let str' = untyper instance_replace_hole tstr in
-      if str = str' then (
-        (* prerr_endline "done"; *)
-        str')
-      else (
-        (* prerr_endline @@ "loop" ^ string_of_int !n; *)
-        loop str')
+      if str = str' then str' else loop str'
     in
     loop str
 end
