@@ -42,14 +42,14 @@
 
 
 #if OCAML_VERSION >= (4, 13, 0)
-    
+   
   let match_type env texp texp' =
-    Ctype.(does_match env (instance texp) texp')
+    Ctype.(does_match env texp texp' || does_match env texp' texp)
 
 #else
 
   let match_type env texp texp' =
-    Ctype.matches env texp texp'
+    Ctype.(matches env texp texp' || matches env texp' texp)
 
 #endif
 

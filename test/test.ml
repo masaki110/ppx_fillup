@@ -42,12 +42,11 @@ let test_print_ast _ =
 (***** optional arguments **********)
 type point2D = Pt of int * int
 
-let (equal_point2D [@instance]) =
- fun (Pt (x1, y1)) (Pt (x2, y2)) -> x1 = x2 && y1 = y2
-
-let plist = [ Pt (1, 2); Pt (5, 8); Pt (2, 9) ]
-
 let test_optional _ =
+  let (equal_point2D [@instance]) =
+   fun (Pt (x1, y1)) (Pt (x2, y2)) -> x1 = x2 && y1 = y2
+  in
+  let plist = [ Pt (1, 2); Pt (5, 8); Pt (2, 9) ] in
   let open Base.List in
   assert_equal true (mem ~!equal plist (Pt (1, 2)));
   ()
@@ -56,54 +55,29 @@ let test_optional _ =
 module MyComp = struct
   open Base
 
-  let (myint [@instance]) =
-    ((module Int) : (int, Int.comparator_witness) Base.Comparator.Module.t)
-
+  let myint = ((module Int) : (int, Int.comparator_witness) Comparator.Module.t)
+  let myfloat = ((module Float) : _ Comparator.Module.t)
   let mystring = ((module String) : _ Comparator.Module.t)
 end
 
 let test_first_class_module _ =
   let open%fillup MyComp in
   let open! Base in
-  assert_equal 3
-    (Set.length
-       (Set.of_list
-          (__ : (int, Int.comparator_witness) Base.Comparator.Module.t)
-          [ 1; 2; 3 ]));
-  (* assert_equal 3 (Set.length (Set.of_list MyComp.myint [ 1; 2; 3 ])); *)
-  (* assert_equal 3 (Set.length (Set.of_list __ [ 1.23; 3.45; 6.78 ])); *)
+  assert_equal 3 (Set.length (Set.of_list __ [ 1; 2; 3 ]));
+  assert_equal 3 (Set.length (Set.of_list __ [ 1; 2; 3 ]));
+  assert_equal 3 (Set.length (Set.of_list __ [ 1.23; 3.45; 6.78 ]));
   ()
 
-module type S = sig
-  val x : int
-end
-
-let get_x (module X : S) = X.x
-
-type ('a, 'b) either = Left of 'a | Right of 'b
-
-let f takeleft x = takeleft (Left x)
-
-let ((left [@instance]) : (int, string) either -> int) = function
-  | Left x -> x
-  | Right _ -> failwith "fail"
-
-let _ = (f (__ : (int, string) either -> int) 100 : int)
-let f = function Left x -> x | Right _ -> failwith "fail"
-let ((left100 [@instance]) : (int, string) either) = Left 100
-(* let _ = (f __ : int) *)
-
 (***** ppx_deriving **********)
-type point2D' = Pt of int * int [@@deriving show, eq, ord]
-
-let plist = [ Pt (1, 2); Pt (5, 8); Pt (2, 9) ]
+type point2D' = Pt' of int * int [@@deriving show, eq, ord]
 
 let test_deriving _ =
+  let plist = [ Pt' (1, 2); Pt' (5, 8); Pt' (2, 9) ] in
   let open%fillup Show in
-  Base.List.(
-    assert_equal "(Test.Pt (1, 2))" (??show (Pt (1, 2)));
-    assert_equal true (mem ~!equal plist (Pt (1, 2)));
-    ())
+  let open Base.List in
+  assert_equal "(Test.Pt' (1, 2))" (??show (Pt' (1, 2)));
+  assert_equal true (mem ~!equal plist (Pt' (1, 2)));
+  ()
 
 (****** arithmetic operation **********)
 let test_arith _ =
@@ -126,27 +100,3 @@ let _ =
          ]
   in
   run_test_tt_main tests
-
-(* open Base
-
-   let (myint [@instance]) =
-     ((module Int) : (int, Int.comparator_witness) Base.Comparator.Module.t)
-
-   let _ = Set.of_list __ [ 1; 2; 3 ] *)
-
-let print ((inst [@instance]) : 'a -> string) (x : 'a) =
-  print_endline (??show x)
-
-(* let print ((inst [@instance]) : 'a -> string) (x : 'a) =
-   print_endline (??show x) *)
-
-let show inst = inst;;
-
-let open%fillup Show in
-(??show 123 : string)
-
-let _ =
-  let open%fillup Show in
-  (* print Show.show_int 123; *)
-  ??print 123;
-  ()
