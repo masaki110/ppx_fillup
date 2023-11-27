@@ -197,6 +197,7 @@ module Typeful = struct
     let match_instance env hole_texp ctx_inst =
       match ctx_inst with
       | Poly { lpath; desc; cls } -> (
+          (* Wether instance is more general hole => match_type env hole instance *)
           let rec loop path texp =
             let inst_desc = Compatibility.repr_type env texp in
             match inst_desc with
@@ -216,7 +217,8 @@ module Typeful = struct
           | Some lpath -> Some (Poly { lpath; desc; cls })
           | None -> None)
       | Mono { desc; _ } ->
-          if Compatibility.match_type env hole_texp desc.val_type then
+          (* Whether hole is more general instance => match_type env instance hole *)
+          if Compatibility.match_type env desc.val_type hole_texp then
             Some ctx_inst
           else None
     in
