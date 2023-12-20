@@ -1,4 +1,4 @@
-module Show = struct
+(* module Show = struct
   type msg = Msg of string
 
   let show_int = string_of_int
@@ -92,4 +92,4 @@ let (addpp [@instance]) =
 ;;
 
 { x = 3.; y = 5. } == ??add { x = 1.; y = 2. } { x = 2.; y = 3. };;
-[ 13; 35 ] = List.map (??add 1) [ 12; 34 ]
+[ 13; 35 ] = List.map (??add 1) [ 12; 34 ] *)
