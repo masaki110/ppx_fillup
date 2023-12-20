@@ -1,5 +1,5 @@
-open Ppxlib
 open Util
+open Ppxlib
 
 (* Declaration of extension [%H cls] *)
 let hole =
@@ -10,10 +10,13 @@ let hole =
          let str = [ { pstr_desc = Pstr_eval (expr, []); pstr_loc = loc } ] in
          mkhole' ~loc ~payload:(PStr (Cast.to_str str)) ())
 
-(* open%fillup M, open module as instances *)
+(* open module as instances *)
+let ext_name = "instance"
+
+(* open%fillup M *)
 let open_instance_toplevel =
   Context_free.Rule.extension
-  @@ Extension.declare "fillup" Extension.Context.structure_item
+  @@ Extension.declare ext_name Extension.Context.structure_item
        Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
        (fun ~loc ~path:_ md ->
          let md_exp = md.popen_expr in
@@ -30,10 +33,10 @@ let open_instance_toplevel =
            pstr_loc = loc;
          })
 
-(* let open%fillup M in e, open module locally as instances *)
+(* let open%fillup M in e *)
 let open_instance_local =
   Context_free.Rule.extension
-  @@ Extension.declare "fillup" Extension.Context.expression
+  @@ Extension.declare ext_name Extension.Context.expression
        Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
        (fun ~loc ~path:_ md expr ->
          let md_exp = md.popen_expr in

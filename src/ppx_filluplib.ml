@@ -1,4 +1,5 @@
 open Util
+open Compatibility
 
 module Typeful = struct
   open Parsetree
@@ -95,9 +96,7 @@ module Typeful = struct
         Some id
     | _ -> raise Invalid_payload
 
-  type handle_exc_inst = Include | Exclude
-
-  let collect_inst ~exc env name path desc acc =
+  let collect_inst all_collect env name path desc acc =
     let get_inst inst_name attrs =
       let rec loop = function
         | [] -> None
@@ -130,7 +129,7 @@ module Typeful = struct
       | None -> (
           match get_inst poly_instance desc.val_attributes with
           | Some cls -> Poly { lpath; desc; cls } :: acc
-          | None -> (
+          | None ->
               if
                 types_derived
                 |> List.exists (fun ty ->
@@ -139,10 +138,8 @@ module Typeful = struct
                            (regexp ("\\(show\\|pp\\|equal\\|compare\\)_" ^ ty))
                            name 0))
               then Mono { lpath; desc; cls = None } :: acc
-              else
-                match exc with
-                | Include -> Mono { lpath; desc; cls = None } :: acc
-                | Exclude -> acc)))
+              else if all_collect then Mono { lpath; desc; cls = None } :: acc
+              else acc))
 
   let get_iset { hole_texp; hole_cls } =
     let find_instance env path =
@@ -151,9 +148,7 @@ module Typeful = struct
         let check_sig path acc = function
           | Types.Sig_value (ident, sig_desc, _) ->
               let name = Ident.name ident in
-              collect_inst ~exc:Include env name
-                (Path.Pdot (path, name))
-                sig_desc acc
+              collect_inst true env name (Path.Pdot (path, name)) sig_desc acc
           | _ -> acc
         in
         match md.md_type with
@@ -178,7 +173,7 @@ module Typeful = struct
       List.(concat @@ map (search_mdvals env) (dummy_md env))
     in
     let search_envvals env =
-      Env.fold_values (collect_inst ~exc:Exclude env) None env []
+      Env.fold_values (collect_inst false env) None env []
     in
     let check_class l =
       let rec loop acc = function
@@ -197,29 +192,29 @@ module Typeful = struct
     let match_instance env hole_texp ctx_inst =
       match ctx_inst with
       | Poly { lpath; desc; cls } -> (
-          (* Wether instance is more general hole => match_type env hole instance *)
+          (* Wether INSTANCE is more general HOLE => match_type env hole instance *)
           let rec loop path texp =
-            let inst_desc = Compatibility.repr_type env texp in
+            let inst_desc = repr_type env texp in
             match inst_desc with
             | Types.Tarrow (_, _, ret, _) -> (
-                if Compatibility.match_type env hole_texp texp then
-                  Some { level = 0; path }
+                if match_type env hole_texp texp then Some { level = 0; path }
                 else
                   match loop path ret with
                   | Some inst -> Some { inst with level = inst.level + 1 }
                   | None -> None)
             | _ ->
-                if Compatibility.match_type env hole_texp texp then
-                  Some { level = 0; path }
+                if match_type env hole_texp texp then Some { level = 0; path }
                 else None
           in
           match loop lpath.path desc.val_type with
           | Some lpath -> Some (Poly { lpath; desc; cls })
           | None -> None)
       | Mono { desc; _ } ->
-          (* Whether hole is more general instance => match_type env instance hole *)
-          if Compatibility.match_type env desc.val_type hole_texp then
-            Some ctx_inst
+          (* Whether HOLE is more general INSTANCE => match_type env instance hole *)
+          if
+            match_type env desc.val_type hole_texp
+            (* || match_type env hole_texp desc.val_type *)
+          then Some ctx_inst
           else None
     in
     let rec loop = function
@@ -233,15 +228,23 @@ module Typeful = struct
     in
     loop (get_iset hole)
 
-  let texp_is_hole texp =
+  let hole_of_texp texp =
     Typedtree.(
       let match_attrs texp =
         let attr_is_hole =
           let rec loop acc = function
             | [] -> None
             | attr :: rest ->
-                if attr.attr_name.txt = hole_name then
-                  let hole_texp = { texp with exp_attributes = acc @ rest } in
+                if attr.attr_name.txt = "HOLE" then
+                  let head =
+                    {
+                      attr with
+                      attr_name = { attr.attr_name with txt = "Filled" };
+                    }
+                    :: acc
+                    |> List.rev
+                  in
+                  let hole_texp = { texp with exp_attributes = head @ rest } in
                   let hole_cls =
                     try get_class attr
                     with Invalid_payload ->
@@ -271,7 +274,7 @@ module Typeful = struct
   let instance_replace_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
       texp =
     Typedtree.(
-      match texp_is_hole texp with
+      match hole_of_texp texp with
       | None -> super.expr self texp
       | Some ({ hole_texp; hole_cls } as hole) -> (
           let loc, attrs = (hole_texp.exp_loc, hole_texp.exp_attributes) in
@@ -281,8 +284,8 @@ module Typeful = struct
               apply_holes lpath.level @@ evar ~loc ~attrs lpath.path
           | _ :: _ as l ->
               Location.raise_errorf ~loc
-                "(ppx_fillup) Instance overlapped: %a \n %s " Printtyp.type_expr
-                hole_texp.exp_type (show_instances l)
+                "(ppx_fillup) Instance overlapped: %a \n %s "
+                Printtyp.type_scheme hole_texp.exp_type (show_instances l)
           | [] ->
               let arith_cls =
                 try which_arith hole_cls
@@ -296,12 +299,12 @@ module Typeful = struct
               @@ Longident.Ldot (Longident.Lident "Ppx_fillup", arith_cls)))
 
   let fillup str =
-    let n = ref 0 in
+    (* let n = ref 0 in *)
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
-      n := !n + 1;
-      let tstr = Compatibility.type_structure env str in
+      (* n := !n + 1; *)
+      let tstr = type_structure env str in
       let str' = untyper instance_replace_hole tstr in
       if str = str' then str' else loop str'
     in
@@ -390,21 +393,32 @@ module Typeless = struct
             @@ Exp.apply ~loc ~attrs:pexp_attributes
                  (mkhole' ~payload:(PStr (Cast.to_str [ Str.eval exp ])) ())
                  args
+        (*** Formatter ***)
+        (* | Pexp_ident
+             ( ({
+                  pexp_desc = Pexp_ident { txt = Lident name; _ };
+                  pexp_attributes;
+                  _;
+                } as exp),
+               args )
+           when is_arith name ->
+             this#expression
+             @@ Exp.apply ~loc ~attrs:pexp_attributes
+                  (mkhole' ~payload:(PStr (Cast.to_str [ Str.eval exp ])) ())
+                  args *)
         | _ -> super#expression exp
     end
 
   let transform (str : Parsetree.structure) =
-    Ppxlib.(
+    if
       (* let alert_mapper = expr_mapper Typeful.alert_filled in *)
-      let pp_str = (new preprocess)#structure in
-      if
-        Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
-        || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-      then pp_str str
-      else
-        pp_str str
-        |> Selected_ast.To_ocaml.copy_structure
-        (* |> alert_mapper *)
-        |> Typeful.fillup
-        |> Selected_ast.Of_ocaml.copy_structure)
+      Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+      || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+    then (new preprocess)#structure str
+    else
+      (new preprocess)#structure str
+      |> Cast.to_str
+      (* |> alert_mapper *)
+      |> Typeful.fillup
+      |> Cast.of_str
 end

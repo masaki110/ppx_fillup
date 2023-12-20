@@ -45,7 +45,7 @@
 #if OCAML_VERSION >= (4, 13, 0)
    
   let match_type env texp1 texp2 =
-    (* Format.eprintf "\n HOLE: %a \n INST: %a\n RES: %b\n" Printtyp.type_scheme texp1 Printtyp.type_scheme texp2; *)
+    (* Format.eprintf "\n texp1: %a \n texp2: %a\n" Printtyp.type_scheme texp1 Printtyp.type_scheme texp2; *)
     Ctype.(does_match env texp1 texp2)
 
 #else

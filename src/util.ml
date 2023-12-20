@@ -1,3 +1,4 @@
+open Compatibility
 open Parsetree
 
 (* let default_loc = !Ast_helper.default_loc *)
@@ -12,17 +13,15 @@ let expr_mapper f str =
 
 (* let untyper = Untypeast.default_mapper *)
 let untyper f tstr =
-  let super = Compatibility.default_untyper in
+  let super = default_untyper in
   let self = { super with expr = f super } in
   self.structure self tstr
-
-let lident_of_path = Compatibility.lident_of_path
 
 let evar ~loc ~attrs path =
   Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lident_of_path path
 
 (* ***************************************************** *)
-let hole_name = "HOLE"
+
 let is_arith txt = List.mem txt [ "+"; "-"; "*"; "/" ]
 
 exception Not_Arithmetic_Operator
@@ -43,9 +42,17 @@ let mk_dummy_md_name =
     cnt := !cnt + 1;
     dummy_md_name ^ string_of_int !cnt
 
-let show_payload = function
-  | PStr str -> Pprintast.string_of_structure str
-  | _ -> ""
+let show_payload =
+  let print = Format.asprintf in
+  let open Pprintast in
+  function
+  | PStr st -> print "%a" structure st
+  | PSig sg -> print "%a" signature sg
+  | PTyp ty -> print "%a" core_type ty
+  | PPat (pt, ex) -> (
+      match ex with
+      | None -> print "%a" pattern pt
+      | Some ex -> print "%a when %a" pattern pt expression ex)
 
 module Cast = struct
   open Ppxlib
