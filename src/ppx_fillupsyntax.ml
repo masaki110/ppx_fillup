@@ -2,7 +2,7 @@ open Ppx_fillupapi
 open Ppxlib
 
 (* Declaration of extension [%H cls] *)
-let hole =
+(* let hole =
   Context_free.Rule.extension
   @@ Extension.declare
        "H"
@@ -16,7 +16,7 @@ let hole =
            | _ -> None
          in
          (* let str = [ { pstr_desc = Pstr_eval (expr, []); pstr_loc = loc } ] in *)
-         mkhole ~loc idopt)
+         hole_noid ~loc ()) *)
 
 (* open module as instances *)
 (* let ext_name = instance_name *)

@@ -24,19 +24,14 @@ let uniq x =
   in
   loop [] x
 
-(* let string_of_list f l =
-  let rec loop acc = function
-    | [] -> "[]"
-    | [ i ] -> acc ^ f i ^ " ]"
-    | i :: rest -> loop (acc ^ f i ^ ",\n   ") rest
-  in
-  loop "[ " l *)
-
-let string_of_list f xs = "[" ^ List.fold_left (fun acc x -> acc ^ f x ^ ";") "" xs ^ "]"
+let string_of_list f xs =
+  "[ " ^ List.fold_left (fun acc x -> acc ^ f x ^ "; ") "" xs ^ "]"
 
 let string_of_option f = function
   | None -> "None"
   | Some op -> "Some of " ^ f op
+
+let string_of_id id = string_of_option (fun x -> x) id
 
 let mangle ?(fixpoint = "t") affix name =
   match name = fixpoint, affix with
@@ -73,10 +68,11 @@ let rec string_of_lid =
 let mkloc ?(loc = !Ast_helper.default_loc) x = Location.mkloc x loc
 let mknoloc = Location.mknoloc
 
-let id_of_texp = function
-  | T.Texp_ident (_, { txt = Lident "__"; _ }, _) -> Some None
-  | T.Texp_ident (_, { txt = Lident id; _ }, _) -> Some (Some id)
-  | _ -> None
+let id_of_texp texp =
+  match texp.T.exp_desc with
+  | Texp_ident (_, { txt = Lident "__"; _ }, _) -> None
+  | Texp_ident (_, { txt = Lident id; _ }, _) -> Some id
+  | _ -> raise Not_hole
 
 let id_of_payload = function
   | PStr [] ->
@@ -168,15 +164,6 @@ let mk_voidexpr =
     { ([%expr (Stdlib.Obj.magic () : [%t Typ.var ("fillup" ^ string_of_int !cnt)])]) with
       pexp_attributes = attrs
     }
-
-let mkhole ?(loc = !default_loc) ?(attrs = []) id =
-  let id =
-    match id with
-    | None -> []
-    | Some id -> [ Str.eval (Exp.ident { txt = Lident id; loc }) ]
-  in
-  let attrs = Attr.mk ~loc { txt = "HOLE"; loc } (PStr id) :: attrs in
-  mk_voidexpr ~loc ~attrs ()
 
 let mk_dummy_module =
   let cnt = ref 0 in
