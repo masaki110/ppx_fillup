@@ -3,6 +3,7 @@ open Parsetree
 module T = Typedtree
 
 let hole_name = "HOLE"
+let overload_name = "overload"
 let instance_name = "instance"
 let instance_with_ctxt_name = "instance_with_context"
 let dummy_prefix = "Ppx_fillup_instance"
@@ -92,9 +93,6 @@ let id_of_payload = function
 
 let idopt_of_payload pl = Some (id_of_payload pl)
 
-(* let evar ~loc ~attrs path =
-  Ast_helper.Exp.ident ~loc ~attrs @@ mknoloc @@ lident_of_path path *)
-
 (* used ppxlib **********************************)
 open! Ppxlib
 open! Parsetree
@@ -172,8 +170,6 @@ let mk_dummy_module =
     cnt := !cnt + 1;
     dummy_prefix ^ string_of_int !cnt
 
-(* let id_of_stri = *)
-
 let payload_of_id ~loc = function
   | None -> PStr []
   | Some id -> PStr [ Str.eval ~loc @@ Exp.ident ~loc { txt = Lident id; loc } ]
@@ -185,18 +181,47 @@ let payload_of_id ~loc = function
     (mkloc ~loc @@ Some (mk_dummy_module ()))
     mod_expr *)
 
-let stri_dummy_binding ~loc id mod_expr =
+(* let stri_dummy_binding ~loc id mod_expr =
   Str.module_ ~loc
   @@ Mb.mk
        ~loc
        ~attrs:[ Attr.mk ~loc { txt = instance_name; loc } (payload_of_id ~loc id) ]
        { txt = Some (mk_dummy_module ()); loc }
-       mod_expr
+       mod_expr *)
 
-let expr_dummy_binding ~loc id mod_expr expr =
-  Exp.letmodule
+let id_binding ~loc name =
+  Vb.mk
     ~loc
-    ~attrs:[ Attr.mk ~loc { txt = instance_name; loc } (payload_of_id ~loc id) ]
-    { txt = Some (mk_dummy_module ()); loc }
-    mod_expr
-    expr
+    (Pat.var
+       ~loc
+       ~attrs:[ Attr.mk ~loc (mkloc ~loc overload_name) (PStr []) ]
+       { txt = name; loc })
+    (mk_voidexpr ~loc ())
+
+let instantiate_open ~loc id mod_expr =
+  let name =
+    match id with
+    | None -> "__"
+    | Some name -> name
+  in
+  Opn.mk ~loc
+  @@ Mod.structure
+       ~loc
+       [ Str.module_ ~loc
+         @@ Mb.mk
+              ~loc
+              ~attrs:[ Attr.mk ~loc { txt = instance_name; loc } (payload_of_id ~loc id) ]
+              { txt = Some (mk_dummy_module ()); loc }
+              mod_expr
+       ; Str.value
+           ~loc
+           Nonrecursive
+           [ Vb.mk
+               ~loc
+               (Pat.var
+                  ~loc
+                  ~attrs:[ Attr.mk ~loc (mkloc ~loc overload_name) (PStr []) ]
+                  { txt = name; loc })
+               (mk_voidexpr ~loc ())
+           ]
+       ]
