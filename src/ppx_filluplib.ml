@@ -12,15 +12,14 @@ type lpath =
 type instance =
   { lpath : lpath
   ; desc : Types.value_description
-  ; id : string option
   }
 
 type ctx_instance =
   | Mono of instance
   | Poly of instance
 
-let mk_mono lpath desc id = Mono { lpath; desc; id }
-let mk_poly lpath desc id = Poly { lpath; desc; id }
+let mono lpath desc = Mono { lpath; desc }
+let poly lpath desc = Poly { lpath; desc }
 
 let string_of_instance inst =
   match inst with
@@ -75,22 +74,26 @@ module Typed = struct
 
   let make_iset (texp : T.expression) =
     let env = texp.exp_env in
+    let hid = id_of_texp texp in
     (* Get HOLE ident *)
-    let instantiate idopt path (desc : Types.value_description) =
+    let instantiate full_instantiate path (desc : Types.value_description) =
       let lpath = { level = 0; path } in
       (*** override instantiated id ***)
-      match idopt with
+      match full_instantiate with
       | None ->
         (match find_attr instance_name desc.val_attributes with
-         | Some pl -> Some (mk_mono lpath desc (id_of_payload pl))
+         | Some pl -> if hid = id_of_payload pl then Some (mono lpath desc) else None
          | None ->
            (match find_attr instance_with_ctxt_name desc.val_attributes with
-            | Some pl -> Some (mk_poly lpath desc (id_of_payload pl))
+            | Some pl -> if hid = id_of_payload pl then Some (poly lpath desc) else None
             | None -> None))
       | Some id ->
-        (match find_attr instance_with_ctxt_name desc.val_attributes with
-         | Some _ -> Some (mk_poly lpath desc id)
-         | None -> Some (mk_mono lpath desc id))
+        if id <> hid
+        then None
+        else (
+          match find_attr instance_with_ctxt_name desc.val_attributes with
+          | Some _ -> Some (poly lpath desc)
+          | None -> Some (mono lpath desc))
     in
     (*** instantiate values in module ***)
     let instance_from_mdecl path mdecl =
@@ -132,35 +135,35 @@ module Typed = struct
         env
         []
     in
-    let get_id =
-      let hole_payload =
-        let find_attr = find_attr hole_name in
-        match texp.exp_attributes, texp.exp_extra with
-        | [], [] -> None
-        | [], extra ->
-          let rec loop = function
-            | [] -> None
-            | (_, _, attrs) :: rest ->
-              (match find_attr attrs with
-               | None -> loop rest
-               | op -> op)
-          in
-          loop extra
-        | attrs, _ -> find_attr attrs
-      in
-      try hole_payload >>= fun pl -> Some (id_of_payload pl) with
-      | Invalid_payload pl ->
-        raise_errorf
-          ~loc:texp.exp_loc
-          "(ppx_fillup) Illigal HOLE payload: %s"
-          (string_of_payload pl)
-    in
-    let hole_id : string option option ref = ref get_id in
+    (* let get_id =
+       let hole_payload =
+       let find_attr = find_attr hole_name in
+       match texp.exp_attributes, texp.exp_extra with
+       | [], [] -> None
+       | [], extra ->
+       let rec loop = function
+       | [] -> None
+       | (_, _, attrs) :: rest ->
+       (match find_attr attrs with
+       | None -> loop rest
+       | op -> op)
+       in
+       loop extra
+       | attrs, _ -> find_attr attrs
+       in
+       try hole_payload >>= fun pl -> Some (id_of_payload pl) with
+       | Invalid_payload pl ->
+       raise_errorf
+       ~loc:texp.exp_loc
+       "(ppx_fillup) Illigal HOLE payload: %s"
+       (string_of_payload pl)
+       in *)
+    let hole_id : string option option ref = ref None in
     let search_envvalues name path desc acc =
       let is_hole =
-        match texp.exp_desc, find_attr overload_name desc.Types.val_attributes with
-        | Texp_ident (_, { txt = Lident id; _ }, _), Some _ ->
-          if name = id then Some (Some id) else None
+        match hid, find_attr overload_name desc.Types.val_attributes with
+        | None, _ -> Some None
+        | Some hname, Some _ -> if name = hname then Some hid else None
         | _, _ -> None
       in
       match
@@ -175,22 +178,19 @@ module Typed = struct
         i :: acc
       | _, _, true ->
         (*** Instanceate 'deriving' functions ***)
-        Mono { lpath = { level = 0; path }; desc; id = None } :: acc
+        Mono { lpath = { level = 0; path }; desc } :: acc
       | _, _, _ -> acc
     in
     (*** Whether texp has [@HOLE id] ***)
-    let instantiate_envvalue = Env.fold_values search_envvalues None env [] in
+    let iset = instantiate_mvalue @ Env.fold_values search_envvalues None env [] in
     match !hole_id with
     | None -> raise Not_hole
-    | Some hid ->
-      List.filter
-        (fun (Mono i | Poly i) -> i.id = hid)
-        (instantiate_mvalue @ instantiate_envvalue)
+    | Some _ -> iset
 
   (*** Match hole & INSTANCE list ***)
   let type_match (hole : T.expression) iset =
     let match_instance env hole = function
-      | Poly { lpath; desc; id } ->
+      | Poly { lpath; desc } ->
         (*** Whether INSTANCE is more general HOLE => match_type env hole instance ***)
         let rec loop path texp =
           match repr_type env texp with
@@ -201,7 +201,7 @@ module Typed = struct
               loop path ret >>= fun lpath -> Some { lpath with level = lpath.level + 1 }
           | _ -> if match_type env hole texp then Some { level = 0; path } else None
         in
-        loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { lpath; desc; id })
+        loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { lpath; desc })
       | Mono { desc; _ } as inst ->
         (*** Whether HOLE is more general INSTANCE => match_type env instance hole ***)
         if match_type env desc.val_type hole
@@ -272,7 +272,7 @@ module Typed = struct
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
-      (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
+      Format.eprintf "\n%a\n" Pprintast.structure str;
       let tstr = type_structure env str in
       let str' = untyper replace_hole tstr in
       if str = str' then str' else loop str'
@@ -326,7 +326,14 @@ class preprocess =
       let loc, attrs = expr.pexp_loc, expr.pexp_attributes in
       match expr.pexp_desc with
       (*** HOLE syntax : __ ***)
-      | Pexp_ident { txt = Lident "__"; _ } -> mkhole ~loc ~attrs None
+      | Pexp_ident { txt = Lident "__"; _ } ->
+        (* let id =
+           match id with
+           | None -> []
+           | Some id -> [ Str.eval (Exp.ident { txt = Lident id; loc }) ]
+           in *)
+        let attrs = Attr.mk ~loc { txt = "HOLE"; loc } (PStr []) :: attrs in
+        mk_voidexpr ~loc ~attrs ()
       (*** Generate 'id' binding ***)
       | Pexp_let (flag, vbs, e) ->
         super#expression
