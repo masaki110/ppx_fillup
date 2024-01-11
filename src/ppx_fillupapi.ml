@@ -1,5 +1,6 @@
 open! Compatibility
 open Parsetree
+module T = Typedtree
 
 let hole_name = "HOLE"
 let instance_name = "instance"
