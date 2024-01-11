@@ -1,5 +1,4 @@
-profile = conventional
-break-infix = fit-or-vertical
-parse-docstrings = true
-indicate-multiline-delimiters = no
-exp-grouping=preserve
+profile = janestreet
+version = 0.26.1
+
+let-binding-spacing=compact

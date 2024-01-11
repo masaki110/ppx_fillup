@@ -1,424 +1,440 @@
-open Util
 open Compatibility
+open Ppx_fillupapi
+open Parsetree
 
-module Typeful = struct
-  open Parsetree
+let overload_name = "overload"
 
-  type class_name = string option
-  type hole = { hole_texp : Typedtree.expression; hole_cls : class_name }
-  type lpath = { level : int; path : Path.t }
-
-  type instance = {
-    lpath : lpath;
-    desc : Types.value_description;
-    cls : class_name;
+type lpath =
+  { level : int
+  ; path : Path.t
   }
 
-  type ctx_instance = Mono of instance | Poly of instance
+type instance =
+  { lpath : lpath
+  ; desc : Types.value_description
+  ; id : string option
+  }
 
-  let mono_instance = "instance"
-  let poly_instance = "instance_with_context"
+type ctx_instance =
+  | Mono of instance
+  | Poly of instance
 
-  (* let alert_filled (super : Ast_mapper.mapper) self (exp : Parsetree.expression)
-       =
-     let mark_alert exp =
-       let expstr =
-         Format.asprintf "ppx_fillup Filled: %a" Pprintast.expression exp
-       in
-       let payload = Ast_helper.Exp.constant (Ast_helper.Const.string expstr) in
-       let attr =
-         {
-           Parsetree.attr_name = { txt = "ppwarning"; loc = Location.none };
-           attr_payload =
-             PStr
-               [
-                 { pstr_desc = Pstr_eval (payload, []); pstr_loc = exp.pexp_loc };
-               ];
-           attr_loc = exp.pexp_loc;
-         }
-       in
-       { exp with pexp_attributes = attr :: exp.Parsetree.pexp_attributes }
-     in
-     let check_attr_expr exp txt =
-       let rec loop acc = function
-         | [] -> None
-         | attr :: attrs ->
-             if attr.attr_name.txt = txt then
-               Some { exp with pexp_attributes = acc @ attrs }
-             else loop (attr :: acc) attrs
-       in
-       loop [] exp.pexp_attributes
-     in
-     match check_attr_expr exp "Filled" with
-     | None -> super.expr self exp
-     | Some e -> mark_alert e *)
+let mk_mono lpath desc id = Mono { lpath; desc; id }
+let mk_poly lpath desc id = Poly { lpath; desc; id }
 
-  let rec apply_holes n (exp : expression) =
-    if n = 0 then exp
-    else
-      let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
-      apply_holes (n - 1)
-        {
-          exp with
-          pexp_desc = Pexp_apply (exp, [ (Nolabel, mkhole ~loc ~attrs ()) ]);
-        }
+let string_of_instance inst =
+  match inst with
+  | Mono inst | Poly inst ->
+    Format.asprintf
+      "%s : %a"
+      (Path.name inst.lpath.path)
+      Printtyp.type_expr
+      inst.desc.val_type
 
-  let show_instance inst =
-    let show_cls = function None -> "" | Some s -> "(Class " ^ s ^ ")" in
-    let lpath_name lp = Path.name lp.path in
-    match inst with
-    | Mono inst | Poly inst ->
-        Format.asprintf "%s %s : %a" (show_cls inst.cls) (lpath_name inst.lpath)
-          Printtyp.type_expr inst.desc.val_type
+let string_of_iset = string_of_list string_of_instance
 
-  let show_instances l =
-    let rec loop acc = function
-      | [] -> "[]"
-      | [ i ] -> acc ^ show_instance i ^ " ]"
-      | i :: rest -> loop (acc ^ show_instance i ^ ",\n   ") rest
-    in
-    loop "[ " l
-
-  exception Invalid_payload
-
-  let get_class attr =
-    match attr.attr_payload with
-    | PStr [] -> None
-    | PStr
-        [
-          {
-            pstr_desc =
-              Pstr_eval
-                ({ pexp_desc = Pexp_ident { txt = Lident id; _ }; _ }, []);
-            _;
-          };
-        ] ->
-        Some id
-    | _ -> raise Invalid_payload
-
-  let collect_inst all_collect env name path desc acc =
-    let get_inst inst_name attrs =
-      let rec loop = function
-        | [] -> None
-        | attr :: attrs ->
-            if attr.attr_name.txt = inst_name then
-              Some
-                (try get_class attr
-                 with Invalid_payload ->
-                   Location.raise_errorf ~loc:attr.attr_loc
-                     "(ppx_fillup) Illigal Instance payload: %s"
-                     (show_payload attr.attr_payload))
-            else loop attrs
+module Typed = struct
+  let instantiate_deriving env =
+    let plugin name attrs =
+      let deriver_exprs =
+        match find_attr "deriving" attrs with
+        | Some
+            (PStr
+              [ { pstr_desc = Pstr_eval ({ pexp_desc = Pexp_tuple exprs; _ }, []); _ } ])
+          -> Some exprs
+        | Some
+            (PStr
+              [ { pstr_desc =
+                    Pstr_eval
+                      (({ pexp_desc = Pexp_ident _ | Pexp_apply _; _ } as expr), [])
+                ; _
+                }
+              ]) -> Some [ expr ]
+        | _ -> None
       in
-      loop attrs
+      let mangle affix = mangle affix name in
+      match deriver_exprs with
+      | None -> []
+      | Some exprs ->
+        List.fold_left
+          (fun acc expr ->
+            match Pprintast.string_of_expression expr with
+            | "show" -> mangle (`Prefix "pp") :: mangle (`Prefix "show") :: acc
+            | "eq" -> mangle (`Prefix "equal") :: acc
+            | "ord" -> mangle (`Prefix "compare") :: acc
+            | "sexp" -> mangle (`Prefix "sexp_of") :: mangle (`Suffix "of_sexp") :: acc
+            | _ -> acc)
+          []
+          exprs
     in
-    let types_derived =
-      Env.fold_types
-        (fun name _ decl acc ->
-          if
-            decl.type_attributes
-            |> List.exists (fun attr -> attr.attr_name.txt = "deriving")
-          then name :: acc
+    Env.fold_types
+      (fun name _ tdecl acc -> acc @ plugin name tdecl.type_attributes)
+      None
+      env
+      []
+
+  let make_iset (texp : T.expression) =
+    let env = texp.exp_env in
+    (* Get HOLE ident *)
+    let instantiate idopt path (desc : Types.value_description) =
+      let lpath = { level = 0; path } in
+      (*** override instantiated id ***)
+      match idopt with
+      | None ->
+        (match find_attr instance_name desc.val_attributes with
+         | Some pl -> Some (mk_mono lpath desc (id_of_payload pl))
+         | None ->
+           (match find_attr instance_with_ctxt_name desc.val_attributes with
+            | Some pl -> Some (mk_poly lpath desc (id_of_payload pl))
+            | None -> None))
+      | Some id ->
+        (match find_attr instance_with_ctxt_name desc.val_attributes with
+         | Some _ -> Some (mk_poly lpath desc id)
+         | None -> Some (mk_mono lpath desc id))
+    in
+    (*** instantiate values in module ***)
+    let instance_from_mdecl path mdecl =
+      let open Types in
+      let idopt =
+        try find_attr instance_name mdecl.md_attributes >>= idopt_of_payload with
+        | Invalid_payload pl ->
+          raise_errorf "(ppx_fillup) Illigal INSTANCE payload: %s" (string_of_payload pl)
+      in
+      let rec loop path mdecl =
+        match mdecl.md_type with
+        | Mty_ident path | Mty_alias path ->
+          let mdecl =
+            try Env.find_module path env with
+            | Not_found -> raise_errorf "Not found: %s" (Path.name path)
+          in
+          loop path mdecl
+        | Mty_signature sg ->
+          List.fold_left
+            (fun acc -> function
+              | Types.Sig_value (ident, vdesc, _) ->
+                (match instantiate idopt (Path.Pdot (path, Ident.name ident)) vdesc with
+                 | Some i -> i :: acc
+                 | None -> acc)
+              | _ -> acc)
+            []
+            sg
+        | Mty_functor _ -> []
+      in
+      loop path mdecl
+    in
+    let instantiate_mvalue =
+      Env.fold_modules
+        (fun name path mdecl acc ->
+          if Str.(string_match (regexp dummy_prefix) name 0)
+          then instance_from_mdecl path mdecl @ acc
           else acc)
-        None env []
+        None
+        env
+        []
     in
-    let lpath = { level = 0; path } in
-    Types.(
-      match get_inst mono_instance desc.val_attributes with
-      | Some cls -> Mono { lpath; desc; cls } :: acc
-      | None -> (
-          match get_inst poly_instance desc.val_attributes with
-          | Some cls -> Poly { lpath; desc; cls } :: acc
-          | None ->
-              if
-                types_derived
-                |> List.exists (fun ty ->
-                       Str.(
-                         string_match
-                           (regexp ("\\(show\\|pp\\|equal\\|compare\\)_" ^ ty))
-                           name 0))
-              then Mono { lpath; desc; cls = None } :: acc
-              else if all_collect then Mono { lpath; desc; cls = None } :: acc
-              else acc))
-
-  let get_iset { hole_texp; hole_cls } =
-    let find_instance env path =
-      let rec loop path =
-        let md = Env.find_module path env in
-        let check_sig path acc = function
-          | Types.Sig_value (ident, sig_desc, _) ->
-              let name = Ident.name ident in
-              collect_inst true env name (Path.Pdot (path, name)) sig_desc acc
-          | _ -> acc
-        in
-        match md.md_type with
-        | Mty_signature sg -> List.fold_left (check_sig path) [] sg
-        | Mty_alias p -> loop p
-        | _ -> []
-      in
-      loop path
-    in
-    let search_mdvals env md =
-      Types.(
-        match md.md_type with Mty_alias p -> find_instance env p | _ -> [])
-    in
-    let resolve_dummy_md env =
-      let dummy_md env =
-        Env.fold_modules
-          (fun name _ md acc ->
-            if Str.(string_match (regexp dummy_md_name) name 0) then md :: acc
-            else acc)
-          None env []
-      in
-      List.(concat @@ map (search_mdvals env) (dummy_md env))
-    in
-    let search_envvals env =
-      Env.fold_values (collect_inst false env) None env []
-    in
-    let check_class l =
-      let rec loop acc = function
-        | [] -> acc
-        | (Mono { cls; _ } as inst) :: vs | (Poly { cls; _ } as inst) :: vs ->
-            if cls = hole_cls then loop (inst :: acc) vs else loop acc vs
-      in
-      loop [] l
-    in
-    let env = hole_texp.exp_env in
-    match hole_cls with
-    | Some txt when is_arith txt -> check_class (find_instance env arith_path)
-    | _ -> check_class (search_envvals env @ resolve_dummy_md env)
-
-  let check_instance hole =
-    let match_instance env hole_texp ctx_inst =
-      match ctx_inst with
-      | Poly { lpath; desc; cls } -> (
-          (* Wether INSTANCE is more general HOLE => match_type env hole instance *)
-          let rec loop path texp =
-            let inst_desc = repr_type env texp in
-            match inst_desc with
-            | Types.Tarrow (_, _, ret, _) -> (
-                if match_type env hole_texp texp then Some { level = 0; path }
-                else
-                  match loop path ret with
-                  | Some inst -> Some { inst with level = inst.level + 1 }
-                  | None -> None)
-            | _ ->
-                if match_type env hole_texp texp then Some { level = 0; path }
-                else None
-          in
-          match loop lpath.path desc.val_type with
-          | Some lpath -> Some (Poly { lpath; desc; cls })
-          | None -> None)
-      | Mono { desc; _ } ->
-          (* Whether HOLE is more general INSTANCE => match_type env instance hole *)
-          if
-            match_type env desc.val_type hole_texp
-            (* || match_type env hole_texp desc.val_type *)
-          then Some ctx_inst
-          else None
-    in
-    let rec loop = function
-      | inst :: rest -> (
-          match
-            match_instance hole.hole_texp.exp_env hole.hole_texp.exp_type inst
-          with
-          | Some i -> i :: loop rest
-          | None -> loop rest)
-      | [] -> []
-    in
-    loop (get_iset hole)
-
-  let hole_of_texp texp =
-    Typedtree.(
-      let match_attrs texp =
-        let attr_is_hole =
-          let rec loop acc = function
-            | [] -> None
-            | attr :: rest ->
-                if attr.attr_name.txt = "HOLE" then
-                  let head =
-                    {
-                      attr with
-                      attr_name = { attr.attr_name with txt = "Filled" };
-                    }
-                    :: acc
-                    |> List.rev
-                  in
-                  let hole_texp = { texp with exp_attributes = head @ rest } in
-                  let hole_cls =
-                    try get_class attr
-                    with Invalid_payload ->
-                      Location.raise_errorf ~loc:attr.attr_loc
-                        "(ppx_fillup) Illigal HOLE payload: %s"
-                        (show_payload attr.attr_payload)
-                  in
-                  Some { hole_texp; hole_cls }
-                else loop (attr :: acc) rest
-          in
-          loop []
-        in
-        match (texp.exp_attributes, texp.exp_extra) with
+    let get_id =
+      let hole_payload =
+        let find_attr = find_attr hole_name in
+        match texp.exp_attributes, texp.exp_extra with
         | [], [] -> None
         | [], extra ->
-            let rec loop_extra = function
-              | [] -> None
-              | (_, _, attrs) :: rest ->
-                  let res = attr_is_hole attrs in
-                  if res = None then loop_extra rest else res
-            in
-            loop_extra extra
-        | attrs, _ -> attr_is_hole attrs
+          let rec loop = function
+            | [] -> None
+            | (_, _, attrs) :: rest ->
+              (match find_attr attrs with
+               | None -> loop rest
+               | op -> op)
+          in
+          loop extra
+        | attrs, _ -> find_attr attrs
       in
-      match_attrs texp)
+      try hole_payload >>= fun pl -> Some (id_of_payload pl) with
+      | Invalid_payload pl ->
+        raise_errorf
+          ~loc:texp.exp_loc
+          "(ppx_fillup) Illigal HOLE payload: %s"
+          (string_of_payload pl)
+    in
+    let hole_id : string option option ref = ref get_id in
+    let search_envvalues name path desc acc =
+      let is_hole =
+        match texp.exp_desc, find_attr overload_name desc.Types.val_attributes with
+        | Texp_ident (_, { txt = Lident id; _ }, _), Some _ ->
+          if name = id then Some (Some id) else None
+        | _, _ -> None
+      in
+      match
+        is_hole, instantiate None path desc, List.mem name (instantiate_deriving env)
+      with
+      | Some id, _, _ ->
+        (*** 'texp' is HOLE ident ***)
+        hole_id := Some id;
+        acc
+      | _, Some i, _ ->
+        (*** Instantiate value in env ***)
+        i :: acc
+      | _, _, true ->
+        (*** Instanceate 'deriving' functions ***)
+        Mono { lpath = { level = 0; path }; desc; id = None } :: acc
+      | _, _, _ -> acc
+    in
+    (*** Whether texp has [@HOLE id] ***)
+    let instantiate_envvalue = Env.fold_values search_envvalues None env [] in
+    match !hole_id with
+    | None -> raise Not_hole
+    | Some hid ->
+      List.filter
+        (fun (Mono i | Poly i) -> i.id = hid)
+        (instantiate_mvalue @ instantiate_envvalue)
 
-  let instance_replace_hole (super : Untypeast.mapper) (self : Untypeast.mapper)
-      texp =
-    Typedtree.(
-      match hole_of_texp texp with
-      | None -> super.expr self texp
-      | Some ({ hole_texp; hole_cls } as hole) -> (
-          let loc, attrs = (hole_texp.exp_loc, hole_texp.exp_attributes) in
-          match check_instance hole with
-          | [ Mono { lpath; _ } ] (* -> evar ~loc ~attrs lpath.path *)
-          | [ Poly { lpath; _ } ] ->
-              apply_holes lpath.level @@ evar ~loc ~attrs lpath.path
-          | _ :: _ as l ->
-              Location.raise_errorf ~loc
-                "(ppx_fillup) Instance overlapped: %a \n %s "
-                Printtyp.type_scheme hole_texp.exp_type (show_instances l)
-          | [] ->
-              let arith_cls =
-                try which_arith hole_cls
-                with Not_Arithmetic_Operator ->
-                  Location.raise_errorf ~loc
-                    "(ppx_fillup) Instance not found: %a" Printtyp.type_scheme
-                    hole_texp.exp_type
-              in
-              Ast_helper.Exp.ident ~loc ~attrs
-              @@ mknoloc
-              @@ Longident.Ldot (Longident.Lident "Ppx_fillup", arith_cls)))
+  (*** Match hole & INSTANCE list ***)
+  let type_match (hole : T.expression) iset =
+    let match_instance env hole = function
+      | Poly { lpath; desc; id } ->
+        (*** Whether INSTANCE is more general HOLE => match_type env hole instance ***)
+        let rec loop path texp =
+          match repr_type env texp with
+          | Types.Tarrow (_, _, ret, _) ->
+            if match_type env hole texp
+            then Some { level = 0; path }
+            else
+              loop path ret >>= fun lpath -> Some { lpath with level = lpath.level + 1 }
+          | _ -> if match_type env hole texp then Some { level = 0; path } else None
+        in
+        loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { lpath; desc; id })
+      | Mono { desc; _ } as inst ->
+        (*** Whether HOLE is more general INSTANCE => match_type env instance hole ***)
+        if match_type env desc.val_type hole
+           (* || match_type env hole_texp desc.val_type *)
+        then Some inst
+        else None
+    in
+    let rec loop = function
+      | inst :: rest ->
+        (match match_instance hole.exp_env hole.exp_type inst with
+         | Some i -> i :: loop rest
+         | None -> loop rest)
+      | [] -> []
+    in
+    loop iset
 
+  let apply_holes n hole expr =
+    let hole =
+      match hole.T.exp_desc with
+      | Texp_ident (_, lid, _) -> Ast_helper.(Exp.ident ~loc:hole.exp_loc lid)
+      | _ -> raise Not_hole
+    in
+    let rec loop n (expr : expression) =
+      if n = 0
+      then expr
+      else loop (n - 1) { expr with pexp_desc = Pexp_apply (expr, [ Nolabel, hole ]) }
+    in
+    loop n expr
+
+  let untyper f =
+    let super = default_untyper in
+    let self = { super with expr = f super } in
+    self.structure self
+
+  (*** Replace hole to instance ***)
+  let replace_hole (super : Untypeast.mapper) self texp =
+    (*** wether texp has INSTANCE ***)
+    match make_iset texp with
+    | exception Not_hole -> super.expr self texp
+    | iset ->
+      (*** HOLE & INSTANCE type-match ***)
+      let loc, attrs = texp.exp_loc, texp.exp_attributes in
+      (match type_match texp iset with
+       (*** Match only one ***)
+       | [ Mono { lpath; _ } ] | [ Poly { lpath; _ } ] ->
+         apply_holes lpath.level texp
+         @@ Ast_helper.Exp.ident ~loc ~attrs
+         @@ mknoloc
+         @@ lident_of_path lpath.path
+       (*** Match two or more ***)
+       | _ :: _ as l ->
+         raise_errorf
+           ~loc
+           "(ppx_fillup) Instance overlapped: %a \n %s "
+           Printtyp.type_scheme
+           texp.exp_type
+           (string_of_iset l)
+       (*** No match ***)
+       | [] ->
+         raise_errorf
+           ~loc
+           "(ppx_fillup) Instance not found: %a"
+           Printtyp.type_scheme
+           texp.exp_type)
+
+  (*** Fillup hole ***)
   let fillup str =
-    (* let n = ref 0 in *)
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let rec loop str =
-      (* n := !n + 1; *)
+      (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
       let tstr = type_structure env str in
-      let str' = untyper instance_replace_hole tstr in
+      let str' = untyper replace_hole tstr in
       if str = str' then str' else loop str'
     in
     loop str
 end
 
-module Typeless = struct
-  open Ppxlib
+open Ppxlib
+open Ast_helper
 
-  class preprocess =
-    object (this)
-      inherit Ppxlib.Ast_traverse.map as super
+class preprocess =
+  object (this)
+    inherit Ppxlib.Ast_traverse.map as super
 
-      method! expression exp =
-        let open Ast_helper in
-        let loc, attrs = (exp.pexp_loc, exp.pexp_attributes) in
-        let hole =
-          Cast.of_exp @@ mkhole ~loc ~attrs:(Cast.to_exp exp).pexp_attributes ()
+    method id_binding ~loc name =
+      Vb.mk
+        ~loc
+        (Pat.var
+           ~loc
+           ~attrs:[ Attr.mk ~loc (mkloc ~loc overload_name) (PStr []) ]
+           { txt = name; loc })
+        (mk_voidexpr ~loc ())
+
+    method vbs_of_id_binding ~loc vbs =
+      let collect_overload_id = function
+        | None -> raise Not_id
+        | Some id -> this#id_binding ~loc id
+      in
+      let mk_idset =
+        let rec loop acc = function
+          | [] -> acc
+          | { pvb_pat; _ } :: rest ->
+            let attrs = pvb_pat.ppat_attributes in
+            (match
+               find_attr' instance_name attrs, find_attr' instance_with_ctxt_name attrs
+             with
+             | None, None -> loop acc rest
+             | Some p, _ | _, Some p -> loop (id_of_payload' p :: acc) rest)
         in
-        match exp.pexp_desc with
-        (*** HOLE syntax ***)
-        | Pexp_ident { txt = Lident "__"; _ } -> hole
-        (*** Fillup type cast ***)
-        | Pexp_apply
-            ( {
-                pexp_desc =
-                  Pexp_apply
-                    ( { pexp_desc = Pexp_ident { txt = Lident "!!"; _ }; _ },
-                      [ (_, func) ] );
-                pexp_attributes;
-                _;
-              },
-              args ) ->
-            let attrs = attrs @ pexp_attributes in
-            this#expression
-            @@ Exp.apply ~loc ~attrs func [ (Nolabel, Exp.apply hole args) ]
-        (*** Fillup any expr ***)
-        | Pexp_apply
-            ( {
-                pexp_desc =
-                  Pexp_apply
-                    ( { pexp_desc = Pexp_ident { txt = Lident "??"; _ }; _ },
-                      [ (_, func) ] );
-                pexp_attributes;
-                _;
-              },
-              args ) ->
-            let attrs = attrs @ pexp_attributes in
-            this#expression
-            @@ Exp.apply ~loc ~attrs func ((Nolabel, hole) :: args)
-        (*** Fillup label arguments ***)
-        | Pexp_apply
-            ( func,
-              ( _,
-                {
-                  pexp_desc =
-                    Pexp_apply
-                      ( {
-                          pexp_desc = Pexp_ident { txt = Lident "~!"; _ };
-                          pexp_attributes;
-                          _;
-                        },
-                        [
-                          ( _,
-                            {
-                              pexp_desc = Pexp_ident { txt = Lident name; _ };
-                              _;
-                            } );
-                        ] );
-                  _;
-                } )
-              :: args ) ->
-            this#expression
-            @@ Exp.apply ~loc ~attrs:pexp_attributes func
-                 ((Labelled name, hole) :: args)
-        (*** Arithmetic ***)
-        | Pexp_apply
-            ( ({
-                 pexp_desc = Pexp_ident { txt = Lident name; _ };
-                 pexp_attributes;
-                 _;
-               } as exp),
-              args )
-          when is_arith name ->
-            this#expression
-            @@ Exp.apply ~loc ~attrs:pexp_attributes
-                 (mkhole' ~payload:(PStr (Cast.to_str [ Str.eval exp ])) ())
-                 args
-        (*** Formatter ***)
-        (* | Pexp_ident
-             ( ({
-                  pexp_desc = Pexp_ident { txt = Lident name; _ };
-                  pexp_attributes;
-                  _;
-                } as exp),
-               args )
-           when is_arith name ->
-             this#expression
-             @@ Exp.apply ~loc ~attrs:pexp_attributes
-                  (mkhole' ~payload:(PStr (Cast.to_str [ Str.eval exp ])) ())
-                  args *)
-        | _ -> super#expression exp
-    end
+        loop [] vbs
+      in
+      List.fold_left
+        (fun acc pl ->
+          match collect_overload_id pl with
+          | exception Not_id -> acc
+          | vb -> vb :: acc)
+        vbs
+        (uniq @@ mk_idset)
 
-  let transform (str : Parsetree.structure) =
-    if
-      (* let alert_mapper = expr_mapper Typeful.alert_filled in *)
-      Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
-      || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-    then (new preprocess)#structure str
-    else
+    method! expression expr =
+      let loc, attrs = expr.pexp_loc, expr.pexp_attributes in
+      match expr.pexp_desc with
+      (*** HOLE syntax : __ ***)
+      | Pexp_ident { txt = Lident "__"; _ } -> mkhole ~loc ~attrs None
+      (*** Generate 'id' binding ***)
+      | Pexp_let (flag, vbs, e) ->
+        super#expression
+          { expr with pexp_desc = Pexp_let (flag, this#vbs_of_id_binding ~loc vbs, e) }
+      (*** Generate 'id' binding when instantiate module ***)
+      | Pexp_open ({ popen_expr; _ }, rest) ->
+        (match
+           find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
+         with
+         | None -> super#expression expr
+         | Some id ->
+           (match id with
+            | None ->
+              super#expression
+              @@ expr_dummy_binding ~loc id { popen_expr with pmod_attributes = [] } rest
+            | Some name ->
+              let expr' =
+                Exp.open_ ~loc
+                @@ Opn.mk ~loc
+                @@ Mod.structure
+                     ~loc
+                     [ stri_dummy_binding ~loc id { popen_expr with pmod_attributes = [] }
+                     ; Str.value ~loc Nonrecursive [ this#id_binding ~loc name ]
+                     ]
+              in
+              super#expression @@ expr' rest))
+      | _ -> super#expression expr
+
+    method! structure_item stri =
+      let loc = stri.pstr_loc in
+      match stri.pstr_desc with
+      (*** Generate 'id' binding ***)
+      | Pstr_value (flag, vbs) ->
+        super#structure_item
+          { stri with pstr_desc = Pstr_value (flag, this#vbs_of_id_binding ~loc vbs) }
+      (*** Generate 'id' binding when instantiate module ***)
+      | Pstr_open { popen_expr; _ } ->
+        (match
+           find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
+         with
+         | None -> super#structure_item stri
+         | Some id ->
+           let stri_binding =
+             stri_dummy_binding ~loc id { popen_expr with pmod_attributes = [] }
+           in
+           (match id with
+            | None -> super#structure_item stri_binding
+            | Some name ->
+              let stri' =
+                Str.open_ ~loc
+                @@ Opn.mk ~loc
+                @@ Mod.structure
+                     ~loc
+                     [ stri_binding
+                     ; Str.value ~loc Nonrecursive [ this#id_binding ~loc name ]
+                     ]
+              in
+              super#structure_item stri'))
+      | _ -> super#structure_item stri
+  end
+
+class postprocess =
+  object (this)
+    inherit Ppxlib.Ast_traverse.map as super
+
+    method remove_id_binding vbs =
+      let rec loop acc = function
+        | [] -> List.rev acc
+        | ({ pvb_pat; _ } as vb) :: rest ->
+          (match find_attr' overload_name pvb_pat.ppat_attributes with
+           | None -> loop (vb :: acc) rest
+           | Some _ -> loop acc rest)
+      in
+      loop [] vbs
+
+    method! expression expr =
+      match expr.pexp_desc with
+      | Pexp_let (flag, vbs, rest) ->
+        (***  Remove id binding ***)
+        super#expression
+          { expr with pexp_desc = Pexp_let (flag, this#remove_id_binding vbs, rest) }
+      | _ -> super#expression expr
+
+    method! structure_item stri =
+      let loc = stri.pstr_loc in
+      match stri.pstr_desc with
+      | Pstr_value (flag, vbs) ->
+        (***  Remove id binding ***)
+        let vbs' = this#remove_id_binding vbs in
+        (match vbs' with
+         | [] -> [%stri ()]
+         | vbs' -> super#structure_item { stri with pstr_desc = Pstr_value (flag, vbs') })
+      | _ -> super#structure_item stri
+  end
+
+(*** Transform structure ***)
+let transform (str : Parsetree.structure) =
+  if Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+     || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+  then (new preprocess)#structure str |> (new postprocess)#structure
+  else (
+    let str =
       (new preprocess)#structure str
-      |> Cast.to_str
-      (* |> alert_mapper *)
-      |> Typeful.fillup
-      |> Cast.of_str
-end
+      |> To_current_ocaml.structure
+      (* |> expr_mapper Typed.alert_filled *)
+      |> Typed.fillup
+      |> Of_current_ocaml.structure
+      |> (new postprocess)#structure
+    in
+    Format.eprintf "\n%a\n" Pprintast.structure str;
+    str)
