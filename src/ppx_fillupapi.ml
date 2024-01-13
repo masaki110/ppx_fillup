@@ -67,6 +67,7 @@ let rec string_of_lid =
     | Ldot (a, b) -> string_of_lid a ^ "." ^ b
     | Lapply (a, b) -> Printf.sprintf "%s(%s)" (string_of_lid a) (string_of_lid b))
 
+let string_of_path p = string_of_lid @@ lident_of_path p
 let mkloc ?(loc = !Ast_helper.default_loc) x = Location.mkloc x loc
 let mknoloc = Location.mknoloc
 

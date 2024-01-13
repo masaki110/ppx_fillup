@@ -86,8 +86,6 @@ module Typed = struct
             | Some pl -> if hid = id_of_payload pl then Some (poly lpath desc) else None
             | None -> None))
       | Some id ->
-        (* print_endline @@ string_of_option (fun x -> x) id; *)
-        (* print_endline @@ string_of_option (fun x -> x) hid; *)
         if id <> hid
         then None
         else (
@@ -127,7 +125,7 @@ module Typed = struct
       in
       loop path mdecl
     in
-    let instantiate_mvalue =
+    let instantiate_module =
       Env.fold_modules
         (fun name path mdecl acc ->
           if Str.(string_match (regexp dummy_prefix) name 0)
@@ -156,12 +154,12 @@ module Typed = struct
         (*** Instantiate value in env ***)
         i :: acc
       | _, _, true ->
-        (*** Instanceate 'deriving' functions ***)
+        (*** Instantiate 'deriving' functions ***)
         Mono { lpath = { level = 0; path }; desc } :: acc
       | _, _, _ -> acc
     in
     (*** Whether texp has [@HOLE id] ***)
-    let iset = instantiate_mvalue @ Env.fold_values search_envvalues None env [] in
+    let iset = instantiate_module @ Env.fold_values search_envvalues None env [] in
     match !hole_id with
     | None -> raise Not_hole
     | Some _ -> iset
@@ -183,8 +181,7 @@ module Typed = struct
         loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { lpath; desc })
       | Mono { desc; _ } as inst ->
         (*** Whether HOLE is more general INSTANCE => match_type env instance hole ***)
-        if match_type env desc.val_type hole
-           (* || match_type env hole_texp desc.val_type *)
+        if match_type env desc.val_type hole (* || match_type env hole desc.val_type *)
         then Some inst
         else None
     in
