@@ -49,11 +49,29 @@ let deriving _ =
   Stdlib.Format.printf "%a" __ x;
   assert_equal "FF.{ Test.bar = 'ito'; baz = 22 }" (__ { bar = "ito"; baz = 022 }) *)
 
-let expr _ =
-  (* let (string_of_int [@instance ( !! )]) = Int.to_string in
-     let (string_of_float [@instance ( !! )]) = Float.to_string in
-     assert_equal "123" !!123;
-     assert_equal "1.23" !!1.23; *)
+let printast _ =
+  let open Ppxlib in
+  let open Parsetree in
+  let open Pprintast [@instance] in
+  let loc = Location.none in
+  assert_equal
+    "1 + 1 : int"
+    (Stdlib.Format.asprintf "%a : %a" __ [%expr 1 + 1] __ [%type: int]);
+  ()
+
+module MyComp = struct
+  open Base
+
+  let myint = ((module Int) : _ Comparator.Module.t)
+  let myfloat = ((module Float) : _ Comparator.Module.t)
+  let mystring = ((module String) : _ Comparator.Module.t)
+end
+
+let first_class_module _ =
+  let open%instance MyComp in
+  assert_equal 3 (Set.length (Set.of_list __ [ 1; 2; 3 ]));
+  assert_equal 3 (Set.length (Set.of_list __ [ 1; 2; 3 ]));
+  assert_equal 3 (Set.length (Set.of_list __ [ 1.23; 3.45; 6.78 ]));
   ()
 
 let _ =
@@ -63,7 +81,24 @@ let _ =
     >::: [ " hole_syntax: arithmetic" >:: arith
          ; " hole_syntax: typecast" >:: typecast
          ; " label: equal" >:: equal
-         ; " local define of instance: " >:: expr (* ; " deriving" >:: deriving *)
+         ; " print AST: " >:: printast
+         ; " first_class_module: Base.Set"
+           >:: first_class_module (* ; " deriving" >:: deriving *)
          ]
   in
   run_test_tt_main tests
+
+(* let expr _ =
+   (* let (string_of_int [@instance ( !! )]) = Int.to_string in *)
+   (* let (string_of_float [@instance ( !! )]) = Float.to_string in *)
+   assert_equal "123" !!123;
+   assert_equal "1.23" !!1.23;
+   () *)
+
+(* let (string_of_int [@instance ( !! )]) = Int.to_string
+   let (string_of_float [@instance ( !! )]) = Float.to_string
+
+   let expr _ =
+   assert_equal "123" !!123;
+   assert_equal "1.23" !!1.23;
+   () *)
