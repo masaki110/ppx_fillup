@@ -157,13 +157,9 @@ let idopt_of_payload' pl = Some (id_of_payload' pl)
 
 open Ast_helper
 
-let mk_voidexpr =
-  let cnt = ref 0 in
-  fun ?(loc = !default_loc) ?(attrs = []) () ->
-    cnt := !cnt + 1;
-    { ([%expr (Stdlib.Obj.magic () : [%t Typ.var ("fillup" ^ string_of_int !cnt)])]) with
-      pexp_attributes = attrs
-    }
+let payload_of_id ~loc = function
+  | None -> PStr []
+  | Some id -> PStr [ Str.eval ~loc @@ Exp.ident ~loc { txt = Lident id; loc } ]
 
 let mk_dummy_module =
   let cnt = ref 0 in
@@ -171,24 +167,15 @@ let mk_dummy_module =
     cnt := !cnt + 1;
     dummy_prefix ^ string_of_int !cnt
 
-let payload_of_id ~loc = function
-  | None -> PStr []
-  | Some id -> PStr [ Str.eval ~loc @@ Exp.ident ~loc { txt = Lident id; loc } ]
-
-(* let instantiate_mb ~loc id mod_expr f =
-  f
-    ~loc
-    ~attrs:[ Attr.mk ~loc { txt = instance_name; loc } (payload_of_id ~loc id) ]
-    (mkloc ~loc @@ Some (mk_dummy_module ()))
-    mod_expr *)
-
-(* let stri_dummy_binding ~loc id mod_expr =
-  Str.module_ ~loc
-  @@ Mb.mk
-       ~loc
-       ~attrs:[ Attr.mk ~loc { txt = instance_name; loc } (payload_of_id ~loc id) ]
-       { txt = Some (mk_dummy_module ()); loc }
-       mod_expr *)
+let mk_voidexpr =
+  let cnt = ref 0 in
+  fun ?(loc = !default_loc) ?(attrs = []) () ->
+    cnt := !cnt + 1;
+    (* { ([%expr Stdlib.Obj.magic ()]) with *)
+    { ([%expr (Stdlib.Obj.magic () : [%t Typ.any ()])]) with
+      (* { ([%expr (Stdlib.Obj.magic () : [%t Typ.var ("fillup" ^ string_of_int !cnt)])]) with *)
+      pexp_attributes = attrs
+    }
 
 let id_binding ~loc name =
   Vb.mk
