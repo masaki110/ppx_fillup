@@ -98,8 +98,8 @@ module Typed = struct
       let open Types in
       let idopt =
         match find_attr instance_name mdecl.md_attributes with
-        | exception Invalid_payload pl ->
-          raise_errorf "(ppx_fillup) Illigal INSTANCE payload: %s" (string_of_payload pl)
+        (* | exception Invalid_payload pl ->
+           raise_errorf "(ppx_fillup) Illigal INSTANCE payload: %s" (string_of_payload pl) *)
         | None -> Some None
         | Some pl -> Some (id_of_payload pl)
       in
@@ -168,19 +168,24 @@ module Typed = struct
   let type_match (hole : T.expression) iset =
     let match_instance env hole = function
       | Poly { lpath; desc } ->
-        (*** Whether INSTANCE is more general HOLE => match_type env hole instance ***)
         let rec loop path texp =
-          match repr_type env texp with
-          | Types.Tarrow (_, _, ret, _) ->
-            if match_type env hole texp
-            then Some { level = 0; path }
-            else
+          (* let matches hole texp = match_type env hole texp || match_type env texp hole in *)
+          if match_type env hole texp || match_type env texp hole
+          then Some { level = 0; path }
+          else (
+            match repr_type env texp with
+            | Types.Tarrow (_, _, ret, _) ->
+              (*** Whether INSTANCE is more general HOLE => match_type env hole texp ***)
               loop path ret >>= fun lpath -> Some { lpath with level = lpath.level + 1 }
-          | _ -> if match_type env hole texp then Some { level = 0; path } else None
+            | _ ->
+              (* if match_type env hole texp || match_type env texp hole
+            then Some { level = 0; path }
+            else *)
+              None)
         in
         loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { lpath; desc })
       | Mono { desc; _ } as inst ->
-        (*** Whether HOLE is more general INSTANCE => match_type env instance hole ***)
+        (*** Whether HOLE is more general INSTANCE => match_type env texp hole ***)
         if match_type env desc.val_type hole (* || match_type env hole desc.val_type *)
         then Some inst
         else None
@@ -247,11 +252,20 @@ module Typed = struct
   let fillup str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
+    let loc = Location.none in
+    let hide_warn20 = To_current_ocaml.structure_item [%stri [@@@warning "-20"]] in
+    let str = hide_warn20 :: str in
     let rec loop str =
       (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
       let tstr = type_structure env str in
       let str' = untyper replace_hole tstr in
-      if str = str' then str' else loop str'
+      if str = str'
+      then
+        (function
+          | h :: t when h = hide_warn20 -> t
+          | str -> str)
+          str'
+      else loop str'
     in
     loop str
 end

@@ -5,12 +5,11 @@ module T = Typedtree
 let hole_name = "HOLE"
 let overload_name = "overload"
 let instance_name = "instance"
-let instance_with_ctxt_name = "instance_with_context"
+let instance_with_ctxt_name = "rec_instance"
 let dummy_prefix = "Ppx_fillup_instance"
 
 exception Not_id
 exception Not_hole
-exception Invalid_payload of payload
 
 let raise_errorf = Location.raise_errorf
 
@@ -77,8 +76,9 @@ let id_of_texp texp =
   | Texp_ident (_, { txt = Lident id; _ }, _) -> Some id
   | _ -> raise Not_hole
 
-let id_of_payload = function
-  | PStr [] ->
+let id_of_payload pl =
+  match pl with
+  | PStr [] | PSig [] ->
     (* overload '__' *)
     None
   | PStr
@@ -88,9 +88,12 @@ let id_of_payload = function
       ] ->
     (* overload ident *)
     Some id
-  | payload ->
+  | PStr ({ pstr_loc = loc; _ } :: _)
+  | PSig ({ psig_loc = loc; _ } :: _)
+  | PTyp { ptyp_loc = loc; _ }
+  | PPat ({ ppat_loc = loc; _ }, _) ->
     (* otherwise *)
-    raise (Invalid_payload payload)
+    raise_errorf ~loc "(ppx_fillup) Invalid id: %s" (string_of_payload pl)
 
 let idopt_of_payload pl = Some (id_of_payload pl)
 
@@ -105,6 +108,7 @@ module To_current_ocaml = struct
   let core_type = copy_core_type
   let pattern = copy_pattern
   let signature = copy_signature
+  let structure_item = copy_structure_item
   let structure = copy_structure
 
   let payload : payload -> Ppxlib_ast.Compiler_version.Ast.Parsetree.payload = function
@@ -172,7 +176,7 @@ let mk_voidexpr =
   fun ?(loc = !default_loc) ?(attrs = []) () ->
     cnt := !cnt + 1;
     (* { ([%expr Stdlib.Obj.magic ()]) with *)
-    { ([%expr (Stdlib.Obj.magic () : [%t Typ.any ()])]) with
+    { ([%expr (Stdlib.Obj.magic () : _)]) with
       (* { ([%expr (Stdlib.Obj.magic () : [%t Typ.var ("fillup" ^ string_of_int !cnt)])]) with *)
       pexp_attributes = attrs
     }

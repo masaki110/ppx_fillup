@@ -2,19 +2,19 @@
 
   let rec lident_of_path = function
   | Path.Pident id -> Longident.Lident (Ident.name id)
-  | Path.Papply (p1, p2) ->
+  | Papply (p1, p2) ->
       Longident.Lapply (lident_of_path p1, lident_of_path p2)
-  | Path.Pdot (p, s) | Path.Pextra_ty (p, Pcstr_ty s) ->
+  | Pdot (p, s) | Pextra_ty (p, Pcstr_ty s) ->
       Longident.Ldot (lident_of_path p, s)
-  | Path.Pextra_ty (p, _) -> lident_of_path p
+  | Pextra_ty (p, _) -> lident_of_path p
 
 # else
 
   let rec lident_of_path = function
   | Path.Pident id -> Longident.Lident (Ident.name id)
-  | Path.Papply (p1, p2) ->
+  | Papply (p1, p2) ->
       Longident.Lapply (lident_of_path p1, lident_of_path p2)
-  | Path.Pdot (p, s) ->
+  | Pdot (p, s) ->
       Longident.Ldot (lident_of_path p, s)
 
 #endif

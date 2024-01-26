@@ -1,24 +1,32 @@
 open! OUnit2
 
 module Add = struct
-  let (addii [@instance ( + )]) = ( + )
-  let (addff [@instance ( + )]) = ( +. )
-  let (addif [@instance ( + )]) = fun a b -> float_of_int a +. b
-  let (addfi [@instance ( + )]) = fun a b -> a +. float_of_int b
+  let addff = ( +. )
+  let addii = ( + )
+  let addif a b = float_of_int a +. b
+  let addfi a b = a +. float_of_int b
+
+  let (add_pair [@rec_instance]) =
+    fun addx addy (x1, y1) (x2, y2) -> addx x1 x2, addy y1 y2
 end
 
 let arith _ =
   let open Add [@instance ( + )] in
   assert_equal 3 @@ (1 + 2);
-  assert_equal 1.2 @@ (1.0 + 0.2);
-  assert_equal 5.859 @@ (3.141 + 2.718)
+  assert_equal 1.2 @@ (1 + 0.2);
+  assert_equal (7, 5.84) @@ ((3, 3.14) + (4, 2.7))
+
+(* assert_equal [ 3; 5 ] @@ ([ 1; 2 ] + [ 2; 3 ]) *)
 
 module Show = struct
   let string_of_int = string_of_int
   let string_of_float = string_of_float
 
-  let (string_of_list [@instance_with_context]) =
+  let (string_of_list [@rec_instance]) =
     fun f xs -> "[" ^ List.fold_left (fun acc x -> acc ^ f x ^ ";") "" xs ^ "]"
+
+  let (show_pair [@rec_instance]) =
+    fun showx showy (x, y) -> "(" ^ showx x ^ "," ^ showy y ^ ")"
 end
 
 let typecast _ =
@@ -38,6 +46,7 @@ let equal _ =
   let open Eq [@instance equal] in
   assert_equal true @@ List.mem ~equal [ 1.; 5.; 2. ] 1.
 
+(* 出力 : [3.9;7.1] *)
 (* type foo =
   { bar : string
   ; baz : int
@@ -52,11 +61,11 @@ let deriving _ =
 let printast _ =
   let open Ppxlib in
   let open Parsetree in
-  let open Pprintast [@instance] in
+  let open Pprintast [@instance _'] in
   let loc = Location.none in
   assert_equal
     "1 + 1 : int"
-    (Stdlib.Format.asprintf "%a : %a" __ [%expr 1 + 1] __ [%type: int]);
+    (Stdlib.Format.asprintf "%a : %a" _' [%expr 1 + 1] _' [%type: int]);
   ()
 
 module MyComp = struct
@@ -87,18 +96,3 @@ let _ =
          ]
   in
   run_test_tt_main tests
-
-(* let expr _ =
-   (* let (string_of_int [@instance ( !! )]) = Int.to_string in *)
-   (* let (string_of_float [@instance ( !! )]) = Float.to_string in *)
-   assert_equal "123" !!123;
-   assert_equal "1.23" !!1.23;
-   () *)
-
-(* let (string_of_int [@instance ( !! )]) = Int.to_string
-   let (string_of_float [@instance ( !! )]) = Float.to_string
-
-   let expr _ =
-   assert_equal "123" !!123;
-   assert_equal "1.23" !!1.23;
-   () *)
