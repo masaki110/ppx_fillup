@@ -5,11 +5,13 @@ module T = Typedtree
 let hole_name = "HOLE"
 let overload_name = "overload"
 let instance_name = "instance"
-let instance_with_ctxt_name = "rec_instance"
-let dummy_prefix = "Ppx_fillup_instance"
+let rec_instance_name = "rec_instance"
+let dummy_vprefix = "_fillup_instance"
+let dummy_mprefix = "_fillup_instance"
 
 exception Not_id
 exception Not_hole
+exception Not_instance
 
 let raise_errorf = Location.raise_errorf
 
@@ -32,7 +34,7 @@ let string_of_option f = function
   | None -> "None"
   | Some op -> "Some of " ^ f op
 
-let string_of_id id = string_of_option (fun x -> x) id
+(* let string_of_id id = string_of_option (fun x -> x) id *)
 
 let mangle ?(fixpoint = "t") affix name =
   match name = fixpoint, affix with
@@ -72,22 +74,22 @@ let mknoloc = Location.mknoloc
 
 let id_of_texp texp =
   match texp.T.exp_desc with
-  | Texp_ident (_, { txt = Lident "__"; _ }, _) -> None
-  | Texp_ident (_, { txt = Lident id; _ }, _) -> Some id
+  | Texp_ident (_, { txt = Lident id; _ }, _) -> id
   | _ -> raise Not_hole
+
+let id_of_pat pat =
+  match pat.ppat_desc with
+  | Ppat_var str -> str.txt
+  | _ -> raise_errorf ~loc:pat.ppat_loc "(ppx_fillup) Invalid instance"
 
 let id_of_payload pl =
   match pl with
-  | PStr [] | PSig [] ->
-    (* overload '__' *)
-    None
   | PStr
       [ { pstr_desc = Pstr_eval ({ pexp_desc = Pexp_ident { txt = Lident id; _ }; _ }, _)
         ; _
         }
-      ] ->
-    (* overload ident *)
-    Some id
+      ] -> id (* overload ident *)
+  | PStr [] | PSig [] -> "__"
   | PStr ({ pstr_loc = loc; _ } :: _)
   | PSig ({ psig_loc = loc; _ } :: _)
   | PTyp { ptyp_loc = loc; _ }
@@ -101,7 +103,7 @@ let idopt_of_payload pl = Some (id_of_payload pl)
 open! Ppxlib
 open! Parsetree
 
-module To_current_ocaml = struct
+module To_ocaml = struct
   open Selected_ast.To_ocaml
 
   let expression = copy_expression
@@ -132,7 +134,7 @@ module To_current_ocaml = struct
     loop []
 end
 
-module Of_current_ocaml = struct
+module Of_ocaml = struct
   open Selected_ast.Of_ocaml
 
   let expression = copy_expression
@@ -152,26 +154,32 @@ module Of_current_ocaml = struct
 end
 
 let find_attr' name attrs =
-  find_attr name (To_current_ocaml.attributes attrs)
-  >>= fun pl -> Some (Of_current_ocaml.payload pl)
+  find_attr name (To_ocaml.attributes attrs) >>= fun pl -> Some (Of_ocaml.payload pl)
 
-let string_of_payload' pl = string_of_payload @@ To_current_ocaml.payload pl
-let id_of_payload' pl = id_of_payload (To_current_ocaml.payload pl)
+let string_of_payload' pl = string_of_payload @@ To_ocaml.payload pl
+let id_of_payload' pl = id_of_payload (To_ocaml.payload pl)
 let idopt_of_payload' pl = Some (id_of_payload' pl)
 
 open Ast_helper
 
-let payload_of_id ~loc = function
-  | None -> PStr []
-  | Some id -> PStr [ Str.eval ~loc @@ Exp.ident ~loc { txt = Lident id; loc } ]
+let payload_of_id ~loc id =
+  PStr [ Str.eval ~loc @@ Exp.ident ~loc { txt = Lident id; loc } ]
 
-let mk_dummy_module =
+let id_of_pat' pat = id_of_pat (To_ocaml.pattern pat)
+
+let mk_dummy_vname =
   let cnt = ref 0 in
   fun () ->
     cnt := !cnt + 1;
-    dummy_prefix ^ string_of_int !cnt
+    "_fillup_instance" ^ string_of_int !cnt
 
-let mk_voidexpr =
+let mk_dummy_mname =
+  let cnt = ref 0 in
+  fun () ->
+    cnt := !cnt + 1;
+    dummy_mprefix ^ string_of_int !cnt
+
+let voidexpr =
   let cnt = ref 0 in
   fun ?(loc = !default_loc) ?(attrs = []) () ->
     cnt := !cnt + 1;
@@ -188,14 +196,9 @@ let id_binding ~loc name =
        ~loc
        ~attrs:[ Attr.mk ~loc (mkloc ~loc overload_name) (PStr []) ]
        { txt = name; loc })
-    (mk_voidexpr ~loc ())
+    (voidexpr ~loc ())
 
 let instantiate_open ~loc id mod_expr =
-  let name =
-    match id with
-    | None -> "__"
-    | Some name -> name
-  in
   Opn.mk ~loc
   @@ Mod.structure
        ~loc
@@ -203,7 +206,7 @@ let instantiate_open ~loc id mod_expr =
          @@ Mb.mk
               ~loc
               ~attrs:[ Attr.mk ~loc { txt = instance_name; loc } (payload_of_id ~loc id) ]
-              { txt = Some (mk_dummy_module ()); loc }
+              { txt = Some (mk_dummy_mname ()); loc }
               mod_expr
        ; Str.value
            ~loc
@@ -213,7 +216,7 @@ let instantiate_open ~loc id mod_expr =
                (Pat.var
                   ~loc
                   ~attrs:[ Attr.mk ~loc (mkloc ~loc overload_name) (PStr []) ]
-                  { txt = name; loc })
-               (mk_voidexpr ~loc ())
+                  { txt = id; loc })
+               (voidexpr ~loc ())
            ]
        ]

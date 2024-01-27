@@ -61,11 +61,11 @@ let deriving _ =
 let printast _ =
   let open Ppxlib in
   let open Parsetree in
-  let open Pprintast [@instance _'] in
+  let open Pprintast [@instance] in
   let loc = Location.none in
   assert_equal
     "1 + 1 : int"
-    (Stdlib.Format.asprintf "%a : %a" _' [%expr 1 + 1] _' [%type: int]);
+    (Stdlib.Format.asprintf "%a : %a" __ [%expr 1 + 1] __ [%type: int]);
   ()
 
 module MyComp = struct

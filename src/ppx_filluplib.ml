@@ -1,6 +1,5 @@
 open Compatibility
 open Ppx_fillupapi
-open Parsetree
 
 type lpath =
   { level : int
@@ -8,22 +7,24 @@ type lpath =
   }
 
 type instance =
-  { lpath : lpath
+  { id : string
+  ; lpath : lpath
   ; desc : Types.value_description
   }
 
-type ctx_instance =
+type kinds_instance =
   | Mono of instance
   | Poly of instance
 
-let mono lpath desc = Mono { lpath; desc }
-let poly lpath desc = Poly { lpath; desc }
+let mono id lpath desc = Mono { id; lpath; desc }
+let poly id lpath desc = Poly { id; lpath; desc }
 
 let string_of_instance inst =
   match inst with
   | Mono inst | Poly inst ->
     Format.asprintf
-      "%s : %a"
+      "(%s) %s : %a"
+      inst.id
       (Path.name inst.lpath.path)
       Printtyp.type_expr
       inst.desc.val_type
@@ -31,6 +32,8 @@ let string_of_instance inst =
 let string_of_iset = string_of_list string_of_instance
 
 module Typed = struct
+  open! Parsetree
+
   let instantiate_deriving env =
     let plugin name attrs =
       let deriver_exprs =
@@ -56,10 +59,14 @@ module Typed = struct
         List.fold_left
           (fun acc expr ->
             match Pprintast.string_of_expression expr with
-            | "show" -> mangle (`Prefix "pp") :: mangle (`Prefix "show") :: acc
-            | "eq" -> mangle (`Prefix "equal") :: acc
-            | "ord" -> mangle (`Prefix "compare") :: acc
-            | "sexp" -> mangle (`Prefix "sexp_of") :: mangle (`Suffix "of_sexp") :: acc
+            | "show" ->
+              ("show", mangle (`Prefix "pp")) :: ("show", mangle (`Prefix "show")) :: acc
+            | "eq" -> ("equal", mangle (`Prefix "equal")) :: acc
+            | "ord" -> ("compare", mangle (`Prefix "compare")) :: acc
+            | "sexp" ->
+              ("sexp_of", mangle (`Prefix "sexp_of"))
+              :: ("of_sexp", mangle (`Suffix "of_sexp"))
+              :: acc
             | _ -> acc)
           []
           exprs
@@ -70,6 +77,7 @@ module Typed = struct
       env
       []
 
+  (*** wether texp has INSTANCE ***)
   let make_iset (texp : T.expression) =
     let env = texp.exp_env in
     let hid = id_of_texp texp in
@@ -80,29 +88,24 @@ module Typed = struct
       match full_instantiate with
       | None ->
         (match find_attr instance_name desc.val_attributes with
-         | Some pl -> if hid = id_of_payload pl then Some (mono lpath desc) else None
+         | Some pl -> if hid = id_of_payload pl then Some (mono hid lpath desc) else None
          | None ->
-           (match find_attr instance_with_ctxt_name desc.val_attributes with
-            | Some pl -> if hid = id_of_payload pl then Some (poly lpath desc) else None
+           (match find_attr rec_instance_name desc.val_attributes with
+            | Some pl ->
+              if hid = id_of_payload pl then Some (poly hid lpath desc) else None
             | None -> None))
       | Some id ->
         if id <> hid
         then None
         else (
-          match find_attr instance_with_ctxt_name desc.val_attributes with
-          | Some _ -> Some (poly lpath desc)
-          | None -> Some (mono lpath desc))
+          match find_attr rec_instance_name desc.val_attributes with
+          | Some _ -> Some (poly hid lpath desc)
+          | None -> Some (mono hid lpath desc))
     in
     (*** instantiate values in module ***)
     let instance_from_mdecl path mdecl =
       let open Types in
-      let idopt =
-        match find_attr instance_name mdecl.md_attributes with
-        (* | exception Invalid_payload pl ->
-           raise_errorf "(ppx_fillup) Illigal INSTANCE payload: %s" (string_of_payload pl) *)
-        | None -> Some None
-        | Some pl -> Some (id_of_payload pl)
-      in
+      let idopt = find_attr instance_name mdecl.md_attributes >>= idopt_of_payload in
       let rec loop path mdecl =
         match mdecl.md_type with
         | Mty_ident path | Mty_alias path ->
@@ -128,34 +131,39 @@ module Typed = struct
     let instantiate_module =
       Env.fold_modules
         (fun name path mdecl acc ->
-          if Str.(string_match (regexp dummy_prefix) name 0)
+          if Str.(string_match (regexp dummy_mprefix) name 0)
           then instance_from_mdecl path mdecl @ acc
           else acc)
         None
         env
         []
     in
-    let hole_id : string option option ref = ref None in
+    let hole_id : string option ref = ref None in
     let search_envvalues name path desc acc =
       let is_hole =
         match hid, find_attr overload_name desc.Types.val_attributes with
-        | None, _ -> Some None
-        | Some hname, Some _ -> if name = hname then Some hid else None
-        | Some _, None -> None
+        | _, None -> None
+        | hname, Some _ -> if name = hname then Some hid else None
       in
-      match
-        is_hole, instantiate None path desc, List.mem name (instantiate_deriving env)
-      with
-      | Some id, _, _ ->
+      let match_id =
+        let rec loop = function
+          | [] -> None
+          | (id, derived_name) :: rest ->
+            if name = derived_name then Some id else loop rest
+        in
+        loop
+      in
+      match is_hole, instantiate None path desc, match_id (instantiate_deriving env) with
+      | Some id, None, None ->
         (*** 'texp' is HOLE ident ***)
         hole_id := Some id;
         acc
-      | _, Some i, _ ->
+      | None, Some i, None ->
         (*** Instantiate value in env ***)
         i :: acc
-      | _, _, true ->
+      | None, None, Some id ->
         (*** Instantiate 'deriving' functions ***)
-        Mono { lpath = { level = 0; path }; desc } :: acc
+        Mono { id; lpath = { level = 0; path }; desc } :: acc
       | _, _, _ -> acc
     in
     (*** Whether texp has [@HOLE id] ***)
@@ -164,10 +172,10 @@ module Typed = struct
     | None -> raise Not_hole
     | Some _ -> iset
 
-  (*** Match hole & INSTANCE list ***)
-  let type_match (hole : T.expression) iset =
+  (*** HOLE & INSTANCE type-match ***)
+  let type_match (hole : T.expression) =
     let match_instance env hole = function
-      | Poly { lpath; desc } ->
+      | Poly { id; lpath; desc } ->
         let rec loop path texp =
           (* let matches hole texp = match_type env hole texp || match_type env texp hole in *)
           if match_type env hole texp || match_type env texp hole
@@ -183,7 +191,7 @@ module Typed = struct
             else *)
               None)
         in
-        loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { lpath; desc })
+        loop lpath.path desc.val_type >>= fun lpath -> Some (Poly { id; lpath; desc })
       | Mono { desc; _ } as inst ->
         (*** Whether HOLE is more general INSTANCE => match_type env texp hole ***)
         if match_type env desc.val_type hole (* || match_type env hole desc.val_type *)
@@ -197,7 +205,7 @@ module Typed = struct
          | None -> loop rest)
       | [] -> []
     in
-    loop iset
+    loop (make_iset hole)
 
   let apply_holes n hole expr =
     let hole =
@@ -212,48 +220,44 @@ module Typed = struct
     in
     loop n expr
 
+  (*** Replace hole to instance ***)
+  let replace_hole (super : Untypeast.mapper) self texp =
+    let loc, attrs = texp.T.exp_loc, texp.exp_attributes in
+    (*** HOLE & INSTANCE type-match ***)
+    match uniq @@ type_match texp with
+    | exception Not_hole -> super.expr self texp
+    (*** Match only one ***)
+    | [ Mono { lpath; _ } ] | [ Poly { lpath; _ } ] ->
+      apply_holes lpath.level texp
+      @@ Ast_helper.Exp.ident ~loc ~attrs
+      @@ mknoloc
+      @@ lident_of_path lpath.path
+    (*** Match two or more ***)
+    | _ :: _ as l ->
+      raise_errorf
+        ~loc
+        "(ppx_fillup) Instance overlapped: %a \n %s "
+        Printtyp.type_scheme
+        texp.exp_type
+        (string_of_iset l)
+    (*** No match ***)
+    | [] ->
+      raise_errorf
+        ~loc
+        "(ppx_fillup) Instance not found: %a"
+        Printtyp.type_scheme
+        texp.exp_type
+
   let untyper f =
     let super = default_untyper in
     let self = { super with expr = f super } in
     self.structure self
 
-  (*** Replace hole to instance ***)
-  let replace_hole (super : Untypeast.mapper) self texp =
-    (*** wether texp has INSTANCE ***)
-    match make_iset texp with
-    | exception Not_hole -> super.expr self texp
-    | iset ->
-      (*** HOLE & INSTANCE type-match ***)
-      let loc, attrs = texp.exp_loc, texp.exp_attributes in
-      (match uniq @@ type_match texp iset with
-       (*** Match only one ***)
-       | [ Mono { lpath; _ } ] | [ Poly { lpath; _ } ] ->
-         apply_holes lpath.level texp
-         @@ Ast_helper.Exp.ident ~loc ~attrs
-         @@ mknoloc
-         @@ lident_of_path lpath.path
-       (*** Match two or more ***)
-       | _ :: _ as l ->
-         raise_errorf
-           ~loc
-           "(ppx_fillup) Instance overlapped: %a \n %s "
-           Printtyp.type_scheme
-           texp.exp_type
-           (string_of_iset l)
-       (*** No match ***)
-       | [] ->
-         raise_errorf
-           ~loc
-           "(ppx_fillup) Instance not found: %a"
-           Printtyp.type_scheme
-           texp.exp_type)
-
-  (*** Fillup hole ***)
   let fillup str =
     Compmisc.init_path ();
     let env = Compmisc.initial_env () in
     let loc = Location.none in
-    let hide_warn20 = To_current_ocaml.structure_item [%stri [@@@warning "-20"]] in
+    let hide_warn20 = To_ocaml.structure_item [%stri [@@@warning "-20"]] in
     let str = hide_warn20 :: str in
     let rec loop str =
       (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
@@ -270,124 +274,192 @@ module Typed = struct
     loop str
 end
 
-open Ppxlib
-open Ast_helper
+module Untyped = struct
+  open Ppxlib
+  open! Parsetree
+  open Ast_helper
 
-class preprocess =
-  object (this)
-    inherit Ppxlib.Ast_traverse.map as super
+  class preprocess =
+    object (this)
+      inherit Ppxlib.Ast_traverse.map as super
 
-    method vbs_of_id_binding ~loc vbs =
-      let collect_overload_id = function
-        | None -> raise Not_id
-        | Some id -> id_binding ~loc id
-      in
-      let mk_idset =
-        let rec loop acc = function
-          | [] -> acc
-          | { pvb_pat; _ } :: rest ->
-            let attrs = pvb_pat.ppat_attributes in
-            (match
-               find_attr' instance_name attrs, find_attr' instance_with_ctxt_name attrs
+      method vbs_of_id_binding ~loc vbs =
+        (* let collect_overload_id = function
+           | None -> raise Not_id
+           | Some id -> id_binding ~loc id
+           in *)
+        let mk_idset =
+          let rec loop acc = function
+            | [] -> acc
+            | { pvb_pat; _ } :: rest ->
+              let attrs = pvb_pat.ppat_attributes in
+              (match
+                 find_attr' instance_name attrs, find_attr' rec_instance_name attrs
+               with
+               | None, None -> loop acc rest
+               | Some _, _ | _, Some _ -> loop (id_of_pat' pvb_pat :: acc) rest)
+          in
+          loop [] vbs
+        in
+        List.fold_left
+          (fun acc lbl ->
+            (* match collect_overload_id pl with
+               | exception Not_id -> acc
+               | vb -> vb :: acc *)
+            id_binding ~loc lbl :: acc)
+          vbs
+          (uniq @@ mk_idset)
+
+      (* let pat[@instance] = e ==> let _fillup[@instance id] = e *)
+      method rename_instance vbs =
+        let rec loop_vbs acc = function
+          | [] -> List.rev acc
+          | ({ pvb_pat = pat; _ } as vb) :: rest ->
+            let loc, attrs = pat.ppat_loc, pat.ppat_attributes in
+            let find_attrs ((`binding | `instance) as kinds) attrs =
+              let rec loop_attrs acc = function
+                | [] -> raise Not_instance
+                | attr :: rest ->
+                  if attr.attr_name.txt = instance_name
+                     || attr.attr_name.txt = rec_instance_name
+                  then (
+                    let id_name = function
+                      | Ppat_var str -> str.txt
+                      | _ -> raise Not_instance
+                    in
+                    match kinds with
+                    | `binding ->
+                      (List.rev
+                       @@ ({ attr with
+                             attr_name = mkloc ~loc overload_name
+                           ; attr_payload = PStr []
+                           }
+                           :: acc))
+                      @ rest
+                    | `instance ->
+                      ({ attr with
+                         attr_payload =
+                           PStr
+                             [ Str.eval
+                                 ~loc
+                                 (Exp.ident
+                                    { txt = Lident (id_name pat.ppat_desc)
+                                    ; loc = Location.none
+                                    })
+                             ]
+                       }
+                       :: acc)
+                      @ rest)
+                  else loop_attrs (attr :: acc) rest
+              in
+              loop_attrs [] attrs
+            in
+            (try
+               loop_vbs
+                 ({ vb with
+                    pvb_pat =
+                      { pat with
+                        ppat_desc = Ppat_var (mkloc ~loc (mk_dummy_vname ()))
+                      ; ppat_attributes = find_attrs `instance attrs
+                      }
+                  }
+                  :: { vb with
+                       pvb_pat = { pat with ppat_attributes = find_attrs `binding attrs }
+                     ; pvb_expr = voidexpr ~loc ()
+                     }
+                  :: acc)
+                 rest
              with
-             | None, None -> loop acc rest
-             | Some p, _ | _, Some p -> loop (id_of_payload' p :: acc) rest)
+             | Not_instance -> loop_vbs (vb :: acc) rest)
+        in
+        loop_vbs [] vbs
+
+      method! expression expr =
+        let loc = expr.pexp_loc in
+        match expr.pexp_desc with
+        | Pexp_let (flag, vbs, expr) ->
+          super#expression
+          @@ { expr with pexp_desc = Pexp_let (flag, this#rename_instance vbs, expr) }
+          (*** Generate 'id' binding when instantiate module ***)
+        | Pexp_open ({ popen_expr; _ }, rest) ->
+          (match
+             find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
+           with
+           | None -> super#expression expr
+           | Some id ->
+             super#expression @@ rest
+             |> Exp.open_ ~loc @@ instantiate_open ~loc id popen_expr)
+        | _ -> super#expression expr
+
+      method! structure_item stri =
+        let loc = stri.pstr_loc in
+        match stri.pstr_desc with
+        | Pstr_value (flag, vbs) ->
+          super#structure_item
+          @@ { stri with pstr_desc = Pstr_value (flag, this#rename_instance vbs) }
+          (*** Generate 'id' binding when instantiate module ***)
+        | Pstr_open { popen_expr; _ } ->
+          (match
+             find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
+           with
+           | None -> super#structure_item stri
+           | Some id ->
+             super#structure_item @@ Str.open_ ~loc @@ instantiate_open ~loc id popen_expr)
+        | _ -> super#structure_item stri
+    end
+
+  class postprocess =
+    object (this)
+      inherit Ppxlib.Ast_traverse.map as super
+
+      method remove_id_binding vbs =
+        let rec loop acc = function
+          | [] -> List.rev acc
+          | ({ pvb_pat; _ } as vb) :: rest ->
+            (match find_attr' overload_name pvb_pat.ppat_attributes with
+             | None -> loop (vb :: acc) rest
+             | Some _ -> loop acc rest)
         in
         loop [] vbs
+
+      method! expression expr =
+        match expr.pexp_desc with
+        | Pexp_let (flag, vbs, rest) ->
+          (***  Remove id binding ***)
+          super#expression
+            { expr with pexp_desc = Pexp_let (flag, this#remove_id_binding vbs, rest) }
+        (* | _ when find_attr' "HOLE" expr.pexp_attributes <> None ->
+           raise_errorf ~loc:expr.pexp_loc "(ppx_fillup) Failure of instance solve" *)
+        | _ -> super#expression expr
+
+      method! structure_item stri =
+        let loc = stri.pstr_loc in
+        match stri.pstr_desc with
+        | Pstr_value (flag, vbs) ->
+          (***  Remove id binding ***)
+          let vbs' = this#remove_id_binding vbs in
+          (match vbs' with
+           | [] -> [%stri ()]
+           | vbs' ->
+             super#structure_item { stri with pstr_desc = Pstr_value (flag, vbs') })
+        | _ -> super#structure_item stri
+    end
+
+  (*** Transform structure ***)
+  let transform (str : Parsetree.structure) =
+    if Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+       || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+    then (* avoid typer *)
+      (new preprocess)#structure str |> (new postprocess)#structure
+    else (
+      let str =
+        (new preprocess)#structure str
+        |> To_ocaml.structure
+        (* |> expr_mapper Typed.alert_filled *)
+        |> Typed.fillup
+        |> Of_ocaml.structure
+        |> (new postprocess)#structure
       in
-      List.fold_left
-        (fun acc pl ->
-          match collect_overload_id pl with
-          | exception Not_id -> acc
-          | vb -> vb :: acc)
-        vbs
-        (uniq @@ mk_idset)
-
-    method! expression expr =
-      let loc = expr.pexp_loc in
-      match expr.pexp_desc with
-      (*** Generate 'id' binding ***)
-      | Pexp_let (flag, vbs, e) ->
-        super#expression
-          { expr with pexp_desc = Pexp_let (flag, this#vbs_of_id_binding ~loc vbs, e) }
-      (*** Generate 'id' binding when instantiate module ***)
-      | Pexp_open ({ popen_expr; _ }, rest) ->
-        (match
-           find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
-         with
-         | None -> super#expression expr
-         | Some id ->
-           super#expression @@ rest
-           |> Exp.open_ ~loc @@ instantiate_open ~loc id popen_expr)
-      | _ -> super#expression expr
-
-    method! structure_item stri =
-      let loc = stri.pstr_loc in
-      match stri.pstr_desc with
-      (*** Generate 'id' binding ***)
-      | Pstr_value (flag, vbs) ->
-        super#structure_item
-          { stri with pstr_desc = Pstr_value (flag, this#vbs_of_id_binding ~loc vbs) }
-      (*** Generate 'id' binding when instantiate module ***)
-      | Pstr_open { popen_expr; _ } ->
-        (match
-           find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
-         with
-         | None -> super#structure_item stri
-         | Some id ->
-           super#structure_item @@ Str.open_ ~loc @@ instantiate_open ~loc id popen_expr)
-      | _ -> super#structure_item stri
-  end
-
-class postprocess =
-  object (this)
-    inherit Ppxlib.Ast_traverse.map as super
-
-    method remove_id_binding vbs =
-      let rec loop acc = function
-        | [] -> List.rev acc
-        | ({ pvb_pat; _ } as vb) :: rest ->
-          (match find_attr' overload_name pvb_pat.ppat_attributes with
-           | None -> loop (vb :: acc) rest
-           | Some _ -> loop acc rest)
-      in
-      loop [] vbs
-
-    method! expression expr =
-      match expr.pexp_desc with
-      | Pexp_let (flag, vbs, rest) ->
-        (***  Remove id binding ***)
-        super#expression
-          { expr with pexp_desc = Pexp_let (flag, this#remove_id_binding vbs, rest) }
-      | _ when find_attr' "HOLE" expr.pexp_attributes <> None ->
-        raise_errorf ~loc:expr.pexp_loc "(ppx_fillup) Failure of instance solve"
-      | _ -> super#expression expr
-
-    method! structure_item stri =
-      let loc = stri.pstr_loc in
-      match stri.pstr_desc with
-      | Pstr_value (flag, vbs) ->
-        (***  Remove id binding ***)
-        let vbs' = this#remove_id_binding vbs in
-        (match vbs' with
-         | [] -> [%stri ()]
-         | vbs' -> super#structure_item { stri with pstr_desc = Pstr_value (flag, vbs') })
-      | _ -> super#structure_item stri
-  end
-
-(*** Transform structure ***)
-let transform (str : Parsetree.structure) =
-  if Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
-     || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-  then (new preprocess)#structure str |> (new postprocess)#structure
-  else (
-    let str =
-      (new preprocess)#structure str
-      |> To_current_ocaml.structure
-      (* |> expr_mapper Typed.alert_filled *)
-      |> Typed.fillup
-      |> Of_current_ocaml.structure
-      |> (new postprocess)#structure
-    in
-    (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
-    str)
+      (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
+      str)
+end

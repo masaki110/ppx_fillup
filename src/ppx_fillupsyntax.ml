@@ -10,7 +10,7 @@ let open_instance_local =
        Extension.Context.expression
        Ast_pattern.(pstr @@ pstr_eval (pexp_open __ __) nil ^:: nil)
        (fun ~loc ~path:_ odecl expr ->
-         expr |> Exp.open_ ~loc @@ instantiate_open ~loc None odecl.popen_expr)
+         expr |> Exp.open_ ~loc @@ instantiate_open ~loc "__" odecl.popen_expr)
 
 (* open%instance M *)
 let open_instance_toplevel =
@@ -20,4 +20,4 @@ let open_instance_toplevel =
        Extension.Context.structure_item
        Ast_pattern.(pstr @@ pstr_open __ ^:: nil)
        (fun ~loc ~path:_ odecl ->
-         Str.open_ ~loc @@ instantiate_open ~loc None odecl.popen_expr)
+         Str.open_ ~loc @@ instantiate_open ~loc "__" odecl.popen_expr)
