@@ -283,78 +283,6 @@ module Untyped = struct
     object (this)
       inherit Ppxlib.Ast_traverse.map as super
 
-      (* let pat[@instance] = e
-         ==> let __fillup1[@instance pat] = e and pat[@overload] = magic () : _ *)
-      method rename_instance vbs =
-        let rec loop_vbs acc = function
-          | [] -> List.rev acc
-          | ({ pvb_pat = pat; pvb_expr; _ } as vb) :: rest ->
-            let loc, attrs = pat.ppat_loc, pat.ppat_attributes in
-            let find_attrs attrs =
-              let rec loop_attrs acc = function
-                | [] -> raise Not_instance
-                | attr :: rest ->
-                  let id_name =
-                    match pat.ppat_desc with
-                    | Ppat_var str -> str.txt
-                    | _ -> raise Not_instance
-                  in
-                  let id_binding =
-                    { vb with
-                      pvb_pat =
-                        { pat with
-                          ppat_attributes =
-                            (List.rev
-                             @@ ({ attr with
-                                   attr_name = mkloc ~loc overload_name
-                                 ; attr_payload = PStr []
-                                 }
-                                 :: acc))
-                            @ rest
-                        }
-                    ; pvb_expr = voidexpr ~loc ()
-                    }
-                  in
-                  let id_definition =
-                    { vb with
-                      pvb_pat =
-                        { pat with
-                          ppat_desc = Ppat_var (mkloc ~loc (mk_dummy_vname ()))
-                        ; ppat_attributes =
-                            (List.rev
-                             @@ ({ attr with
-                                   attr_payload =
-                                     PStr
-                                       [ Str.eval
-                                           ~loc
-                                           (Exp.ident { txt = Lident id_name; loc })
-                                       ]
-                                 }
-                                 :: acc))
-                            @ rest
-                        }
-                    }
-                  in
-                  (match
-                     ( attr.attr_name.txt = instance_name
-                     , attr.attr_name.txt = rec_instance_name )
-                   with
-                   | true, false -> [ id_binding; id_definition ]
-                   | false, true ->
-                     [ id_binding
-                     ; { id_definition with
-                         pvb_expr = this#transform_rec_instance id_name pvb_expr
-                       }
-                     ]
-                   | _, _ -> loop_attrs (attr :: acc) rest)
-              in
-              loop_attrs [] attrs
-            in
-            (try loop_vbs (find_attrs attrs @ acc) rest with
-             | Not_instance -> loop_vbs (vb :: acc) rest)
-        in
-        loop_vbs [] vbs
-
       method transform_rec_instance id expr =
         let loc = expr.pexp_loc in
         let l = ref [] in
@@ -443,6 +371,78 @@ module Untyped = struct
         in
         let expr = replace_id expr in
         add_args expr !l
+
+      (* let pat[@instance] = e
+         ==> let __fillup1[@instance pat] = e and pat[@overload] = magic () : _ *)
+      method rename_instance vbs =
+        let rec loop_vbs acc = function
+          | [] -> List.rev acc
+          | ({ pvb_pat = pat; pvb_expr; _ } as vb) :: rest ->
+            let loc, attrs = pat.ppat_loc, pat.ppat_attributes in
+            let find_attrs attrs =
+              let rec loop_attrs acc = function
+                | [] -> raise Not_instance
+                | attr :: rest ->
+                  let id_name =
+                    match pat.ppat_desc with
+                    | Ppat_var str -> str.txt
+                    | _ -> raise Not_instance
+                  in
+                  let id_binding =
+                    { vb with
+                      pvb_pat =
+                        { pat with
+                          ppat_attributes =
+                            (List.rev
+                             @@ ({ attr with
+                                   attr_name = mkloc ~loc overload_name
+                                 ; attr_payload = PStr []
+                                 }
+                                 :: acc))
+                            @ rest
+                        }
+                    ; pvb_expr = voidexpr ~loc ()
+                    }
+                  in
+                  let id_definition =
+                    { vb with
+                      pvb_pat =
+                        { pat with
+                          ppat_desc = Ppat_var (mkloc ~loc (mk_dummy_vname ()))
+                        ; ppat_attributes =
+                            (List.rev
+                             @@ ({ attr with
+                                   attr_payload =
+                                     PStr
+                                       [ Str.eval
+                                           ~loc
+                                           (Exp.ident { txt = Lident id_name; loc })
+                                       ]
+                                 }
+                                 :: acc))
+                            @ rest
+                        }
+                    }
+                  in
+                  (match
+                     ( attr.attr_name.txt = instance_name
+                     , attr.attr_name.txt = rec_instance_name )
+                   with
+                   | true, false -> [ id_binding; id_definition ]
+                   | false, true ->
+                     [ id_binding
+                     ; { id_definition with
+                         pvb_expr = this#transform_rec_instance id_name pvb_expr
+                       }
+                     ]
+                   | _, _ -> loop_attrs (attr :: acc) rest)
+              in
+              loop_attrs [] attrs
+            in
+            (try loop_vbs (find_attrs attrs @ acc) rest with
+             | Not_instance -> loop_vbs (vb :: acc) rest)
+        in
+        loop_vbs [] vbs
 
       method! expression expr =
         let loc = expr.pexp_loc in
