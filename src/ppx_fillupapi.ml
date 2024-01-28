@@ -6,14 +6,15 @@ let hole_name = "HOLE"
 let overload_name = "overload"
 let instance_name = "instance"
 let rec_instance_name = "rec_instance"
-let dummy_vprefix = "_fillup_instance"
-let dummy_mprefix = "_fillup_instance"
+let dummy_vprefix = "__fillup"
+let dummy_mprefix = "Fillup__"
 
 exception Not_id
 exception Not_hole
 exception Not_instance
 
 let raise_errorf = Location.raise_errorf
+let return x = Some x
 
 let ( >>= ) op f =
   match op with
@@ -171,7 +172,7 @@ let mk_dummy_vname =
   let cnt = ref 0 in
   fun () ->
     cnt := !cnt + 1;
-    "_fillup_instance" ^ string_of_int !cnt
+    dummy_vprefix ^ string_of_int !cnt
 
 let mk_dummy_mname =
   let cnt = ref 0 in

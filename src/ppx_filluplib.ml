@@ -32,7 +32,7 @@ let string_of_instance inst =
 let string_of_iset = string_of_list string_of_instance
 
 module Typed = struct
-  open! Parsetree
+  open Parsetree
 
   let instantiate_deriving env =
     let plugin name attrs =
@@ -283,104 +283,174 @@ module Untyped = struct
     object (this)
       inherit Ppxlib.Ast_traverse.map as super
 
-      method vbs_of_id_binding ~loc vbs =
-        (* let collect_overload_id = function
-           | None -> raise Not_id
-           | Some id -> id_binding ~loc id
-           in *)
-        let mk_idset =
-          let rec loop acc = function
-            | [] -> acc
-            | { pvb_pat; _ } :: rest ->
-              let attrs = pvb_pat.ppat_attributes in
-              (match
-                 find_attr' instance_name attrs, find_attr' rec_instance_name attrs
-               with
-               | None, None -> loop acc rest
-               | Some _, _ | _, Some _ -> loop (id_of_pat' pvb_pat :: acc) rest)
-          in
-          loop [] vbs
-        in
-        List.fold_left
-          (fun acc lbl ->
-            (* match collect_overload_id pl with
-               | exception Not_id -> acc
-               | vb -> vb :: acc *)
-            id_binding ~loc lbl :: acc)
-          vbs
-          (uniq @@ mk_idset)
-
-      (* let pat[@instance] = e ==> let _fillup[@instance id] = e *)
+      (* let pat[@instance] = e
+         ==> let __fillup1[@instance pat] = e and pat[@overload] = magic () : _ *)
       method rename_instance vbs =
         let rec loop_vbs acc = function
           | [] -> List.rev acc
-          | ({ pvb_pat = pat; _ } as vb) :: rest ->
+          | ({ pvb_pat = pat; pvb_expr; _ } as vb) :: rest ->
             let loc, attrs = pat.ppat_loc, pat.ppat_attributes in
-            let find_attrs ((`binding | `instance) as kinds) attrs =
+            let find_attrs attrs =
               let rec loop_attrs acc = function
                 | [] -> raise Not_instance
                 | attr :: rest ->
-                  if attr.attr_name.txt = instance_name
-                     || attr.attr_name.txt = rec_instance_name
-                  then (
-                    let id_name = function
-                      | Ppat_var str -> str.txt
-                      | _ -> raise Not_instance
-                    in
-                    match kinds with
-                    | `binding ->
-                      (List.rev
-                       @@ ({ attr with
-                             attr_name = mkloc ~loc overload_name
-                           ; attr_payload = PStr []
-                           }
-                           :: acc))
-                      @ rest
-                    | `instance ->
-                      ({ attr with
-                         attr_payload =
-                           PStr
-                             [ Str.eval
-                                 ~loc
-                                 (Exp.ident
-                                    { txt = Lident (id_name pat.ppat_desc)
-                                    ; loc = Location.none
-                                    })
-                             ]
+                  let id_name =
+                    match pat.ppat_desc with
+                    | Ppat_var str -> str.txt
+                    | _ -> raise Not_instance
+                  in
+                  let id_binding =
+                    { vb with
+                      pvb_pat =
+                        { pat with
+                          ppat_attributes =
+                            (List.rev
+                             @@ ({ attr with
+                                   attr_name = mkloc ~loc overload_name
+                                 ; attr_payload = PStr []
+                                 }
+                                 :: acc))
+                            @ rest
+                        }
+                    ; pvb_expr = voidexpr ~loc ()
+                    }
+                  in
+                  let id_definition =
+                    { vb with
+                      pvb_pat =
+                        { pat with
+                          ppat_desc = Ppat_var (mkloc ~loc (mk_dummy_vname ()))
+                        ; ppat_attributes =
+                            (List.rev
+                             @@ ({ attr with
+                                   attr_payload =
+                                     PStr
+                                       [ Str.eval
+                                           ~loc
+                                           (Exp.ident { txt = Lident id_name; loc })
+                                       ]
+                                 }
+                                 :: acc))
+                            @ rest
+                        }
+                    }
+                  in
+                  (match
+                     ( attr.attr_name.txt = instance_name
+                     , attr.attr_name.txt = rec_instance_name )
+                   with
+                   | true, false -> [ id_binding; id_definition ]
+                   | false, true ->
+                     [ id_binding
+                     ; { id_definition with
+                         pvb_expr = this#transform_rec_instance id_name pvb_expr
                        }
-                       :: acc)
-                      @ rest)
-                  else loop_attrs (attr :: acc) rest
+                     ]
+                   | _, _ -> loop_attrs (attr :: acc) rest)
               in
               loop_attrs [] attrs
             in
-            (try
-               loop_vbs
-                 ({ vb with
-                    pvb_pat =
-                      { pat with
-                        ppat_desc = Ppat_var (mkloc ~loc (mk_dummy_vname ()))
-                      ; ppat_attributes = find_attrs `instance attrs
-                      }
-                  }
-                  :: { vb with
-                       pvb_pat = { pat with ppat_attributes = find_attrs `binding attrs }
-                     ; pvb_expr = voidexpr ~loc ()
-                     }
-                  :: acc)
-                 rest
-             with
+            (try loop_vbs (find_attrs attrs @ acc) rest with
              | Not_instance -> loop_vbs (vb :: acc) rest)
         in
         loop_vbs [] vbs
+
+      method transform_rec_instance id expr =
+        let loc = expr.pexp_loc in
+        let l = ref [] in
+        let replace_id expr =
+          let rec mapper expr =
+            let return e = Some (mapper e) in
+            let mapping pexp_desc = { expr with pexp_desc } in
+            match expr.pexp_desc with
+            (*** replace identifier overloading to add_arg's argument ***)
+            | Pexp_ident { txt = Lident hid; _ } ->
+              if hid = id
+              then (
+                let varname = mk_dummy_vname () in
+                l := varname :: !l;
+                mapping @@ Pexp_ident { txt = Lident varname; loc })
+              else expr
+            | Pexp_let (a, vbs, ret) ->
+              mapping
+              @@ Pexp_let
+                   ( a
+                   , List.map (fun vb -> { vb with pvb_expr = mapper vb.pvb_expr }) vbs
+                   , mapper ret )
+            | Pexp_function l ->
+              mapping
+              @@ Pexp_function (List.map (fun c -> { c with pc_rhs = mapper c.pc_rhs }) l)
+            | Pexp_fun (a, b, c, ret) -> mapping @@ Pexp_fun (a, b, c, mapper ret)
+            | Pexp_apply (expr, l) ->
+              mapping
+              @@ Pexp_apply (mapper expr, List.map (fun (lbl, expr) -> lbl, mapper expr) l)
+            | Pexp_match (e, l) ->
+              mapping
+              @@ Pexp_match
+                   (mapper e, List.map (fun c -> { c with pc_rhs = mapper c.pc_rhs }) l)
+            | Pexp_try (e, l) ->
+              mapping
+              @@ Pexp_try
+                   (mapper e, List.map (fun c -> { c with pc_rhs = mapper c.pc_rhs }) l)
+            | Pexp_tuple l -> mapping @@ Pexp_tuple (List.map mapper l)
+            | Pexp_construct (a, opt) -> mapping @@ Pexp_construct (a, opt >>= return)
+            | Pexp_variant (a, opt) -> mapping @@ Pexp_variant (a, opt >>= return)
+            | Pexp_record (l, opt) ->
+              mapping
+              @@ Pexp_record (List.map (fun (a, e) -> a, mapper e) l, opt >>= return)
+            | Pexp_field (e, a) -> mapping @@ Pexp_field (mapper e, a)
+            | Pexp_setfield (e1, a, e2) ->
+              mapping @@ Pexp_setfield (mapper e1, a, mapper e2)
+            | Pexp_array l -> mapping @@ Pexp_array (List.map mapper l)
+            | Pexp_ifthenelse (e1, e2, opt) ->
+              mapping @@ Pexp_ifthenelse (mapper e1, mapper e2, opt >>= return)
+            | Pexp_sequence (e1, e2) -> mapping @@ Pexp_sequence (mapper e1, mapper e2)
+            | Pexp_while (e1, e2) -> mapping @@ Pexp_while (mapper e1, mapper e2)
+            | Pexp_for (a, e1, e2, b, e3) ->
+              mapping @@ Pexp_for (a, mapper e1, mapper e2, b, mapper e3)
+            | Pexp_constraint (e, a) -> mapping @@ Pexp_constraint (mapper e, a)
+            | Pexp_coerce (e, a, b) -> mapping @@ Pexp_coerce (mapper e, a, b)
+            | Pexp_send (e, a) -> mapping @@ Pexp_send (mapper e, a)
+            | Pexp_setinstvar (a, e) -> mapping @@ Pexp_setinstvar (a, mapper e)
+            | Pexp_override l ->
+              mapping @@ Pexp_override (List.map (fun (a, e) -> a, mapper e) l)
+            | Pexp_letmodule (a, b, e) -> mapping @@ Pexp_letmodule (a, b, mapper e)
+            | Pexp_letexception (a, e) -> mapping @@ Pexp_letexception (a, mapper e)
+            | Pexp_assert e -> mapping @@ Pexp_assert (mapper e)
+            | Pexp_lazy e -> mapping @@ Pexp_lazy (mapper e)
+            | Pexp_poly (e, a) -> mapping @@ Pexp_poly (mapper e, a)
+            | Pexp_newtype (a, e) -> mapping @@ Pexp_newtype (a, e)
+            | Pexp_open (a, e) -> mapping @@ Pexp_open (a, mapper e)
+            | Pexp_letop { let_; ands; body } ->
+              mapping
+              @@ Pexp_letop
+                   { let_
+                   ; ands =
+                       List.map
+                         (fun and_ -> { and_ with pbop_exp = mapper and_.pbop_exp })
+                         ands
+                   ; body = mapper body
+                   }
+            | _ -> expr
+          in
+          mapper expr
+        in
+        (*** Add alternative argument for identifier overloading ***)
+        let rec add_args expr = function
+          | [] -> expr
+          | txt :: rest ->
+            add_args (Exp.fun_ ~loc Nolabel None (Pat.var { txt; loc }) expr) rest
+        in
+        let expr = replace_id expr in
+        add_args expr !l
 
       method! expression expr =
         let loc = expr.pexp_loc in
         match expr.pexp_desc with
         | Pexp_let (flag, vbs, expr) ->
           super#expression
-          @@ { expr with pexp_desc = Pexp_let (flag, this#rename_instance vbs, expr) }
-          (*** Generate 'id' binding when instantiate module ***)
+            { expr with pexp_desc = Pexp_let (flag, this#rename_instance vbs, expr) }
+        (*** Generate 'id' binding when instantiate module ***)
         | Pexp_open ({ popen_expr; _ }, rest) ->
           (match
              find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'
@@ -396,8 +466,8 @@ module Untyped = struct
         match stri.pstr_desc with
         | Pstr_value (flag, vbs) ->
           super#structure_item
-          @@ { stri with pstr_desc = Pstr_value (flag, this#rename_instance vbs) }
-          (*** Generate 'id' binding when instantiate module ***)
+            { stri with pstr_desc = Pstr_value (flag, this#rename_instance vbs) }
+        (*** Generate 'id' binding when instantiate module ***)
         | Pstr_open { popen_expr; _ } ->
           (match
              find_attr' instance_name popen_expr.pmod_attributes >>= idopt_of_payload'

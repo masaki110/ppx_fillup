@@ -35,6 +35,25 @@ let typecast _ =
   assert_equal "1.23" !!1.23;
   assert_equal "[123;456;]" !![ 123; 456 ]
 
+let (show [@instance]) = string_of_int
+let (show [@instance]) = string_of_float
+
+let (show [@rec_instance]) =
+  fun xs -> "[" ^ List.fold_left (fun acc x -> acc ^ show x ^ ";") "" xs ^ "]"
+
+let (show [@rec_instance]) = fun (x, y) -> "(" ^ show x ^ "," ^ show y ^ ")"
+
+let _ =
+  print_endline @@ show [ 123 ];
+  print_endline @@ show (123, 2.34)
+
+let (( + ) [@instance]) = Int.add
+let (( + ) [@instance]) = Float.add
+let (( + ) [@instance]) = fun a b -> float_of_int a +. b
+let (( + ) [@instance]) = fun a b -> a +. float_of_int b
+let (( + ) [@rec_instance]) = fun (x1, y1) (x2, y2) -> x1 + x2, y1 + y2
+let _ = print_int @@ (1 + 2)
+
 open Base
 
 module Eq = struct
