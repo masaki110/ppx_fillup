@@ -62,5 +62,7 @@ let _ =
   run_test_tt_main tests
 
 (*
-   benchmark (10 times average) : 2.877s
+   benchmark (10 times average)
+   compile : 2.877s
+   exec : 0.212s
 *)
