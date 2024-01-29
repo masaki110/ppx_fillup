@@ -1,0 +1,5 @@
+(test
+ (name test2)
+ (libraries ounit2 ppxlib base)
+ (preprocess
+  (staged_pps ppxlib.metaquot ppx_deriving.std)))
