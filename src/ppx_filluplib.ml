@@ -166,7 +166,7 @@ module Typed = struct
         Mono { id; lpath = { level = 0; path }; desc } :: acc
       | _, _, _ -> acc
     in
-    (*** Whether texp has [@HOLE id] ***)
+    (*** Whether texp is HOLE ident ***)
     let iset = instantiate_module @ Env.fold_values search_envvalues None env [] in
     match !hole_id with
     | None -> raise Not_hole
@@ -517,19 +517,28 @@ module Untyped = struct
 
   (*** Transform structure ***)
   let transform (str : Parsetree.structure) =
-    if Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
-       || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
-    then (* avoid typer *)
-      (new preprocess)#structure str |> (new postprocess)#structure
-    else (
-      let str =
-        (new preprocess)#structure str
-        |> To_ocaml.structure
-        (* |> expr_mapper Typed.alert_filled *)
-        |> Typed.fillup
-        |> Of_ocaml.structure
-        |> (new postprocess)#structure
-      in
-      (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
-      str)
+    let rec loop str' =
+      match str' with
+      | { pstr_desc = Pstr_attribute { attr_name; _ }; _ } :: _
+        when attr_name.txt = "fillup" ->
+        if Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+           || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+        then
+          (* avoid typer *)
+          (new preprocess)#structure str |> (new postprocess)#structure
+        else (
+          let str =
+            (new preprocess)#structure str
+            |> To_ocaml.structure
+            (* |> expr_mapper Typed.alert_filled *)
+            |> Typed.fillup
+            |> Of_ocaml.structure
+            |> (new postprocess)#structure
+          in
+          (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
+          str)
+      | _ :: rest -> loop rest
+      | [] -> str
+    in
+    loop str
 end
