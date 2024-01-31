@@ -1,5 +1,3 @@
-[@@@fillup]
-
 open OUnit2
 
 let (string_of_list [@rec_instance]) =
@@ -60,9 +58,3 @@ let _ =
          ]
   in
   run_test_tt_main tests
-
-(*
-   benchmark (10 times average)
-   compile: 1.232s
-   exec: 0.193s
-*)

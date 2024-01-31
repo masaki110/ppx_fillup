@@ -7,10 +7,3 @@ let (show [@rec_instance]) =
 
 print_endline @@ show 3;
 print_endline @@ show 3.14
-
-[@@@fillup]
-(*
-   without nest
-   benchmark (10 times average)
-   compile : 2.279s
-*)

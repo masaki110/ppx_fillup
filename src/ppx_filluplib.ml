@@ -16,6 +16,8 @@ type kinds_instance =
   | Mono of instance
   | Poly of instance
 
+let holes = ref []
+let register_hole id = holes := id :: !holes
 let mono id lpath desc = Mono { id; lpath; desc }
 let poly id lpath desc = Poly { id; lpath; desc }
 
@@ -223,30 +225,33 @@ module Typed = struct
   (*** Replace hole to instance ***)
   let replace_hole (super : Untypeast.mapper) self texp =
     let loc, attrs = texp.T.exp_loc, texp.exp_attributes in
-    (*** HOLE & INSTANCE type-match ***)
-    match uniq @@ type_match texp with
-    | exception Not_hole -> super.expr self texp
-    (*** Match only one ***)
-    | [ Mono { lpath; _ } ] | [ Poly { lpath; _ } ] ->
-      apply_holes lpath.level texp
-      @@ Ast_helper.Exp.ident ~loc ~attrs
-      @@ mknoloc
-      @@ lident_of_path lpath.path
-    (*** Match two or more ***)
-    | _ :: _ as l ->
-      raise_errorf
-        ~loc
-        "(ppx_fillup) Instance overlapped: %a \n %s "
-        Printtyp.type_scheme
-        texp.exp_type
-        (string_of_iset l)
-    (*** No match ***)
-    | [] ->
-      raise_errorf
-        ~loc
-        "(ppx_fillup) Instance not found: %a"
-        Printtyp.type_scheme
-        texp.exp_type
+    match texp.exp_desc with
+    | Texp_ident (_p, _, _) when List.mem (Path.name _p) !holes ->
+      (*** HOLE & INSTANCE type-match ***)
+      (match uniq @@ type_match texp with
+       | exception Not_hole -> super.expr self texp
+       (*** Match only one ***)
+       | [ Mono { lpath; _ } ] | [ Poly { lpath; _ } ] ->
+         apply_holes lpath.level texp
+         @@ Ast_helper.Exp.ident ~loc ~attrs
+         @@ mknoloc
+         @@ lident_of_path lpath.path
+       (*** Match two or more ***)
+       | _ :: _ as l ->
+         raise_errorf
+           ~loc
+           "(ppx_fillup) Instance overlapped: %a \n %s "
+           Printtyp.type_scheme
+           texp.exp_type
+           (string_of_iset l)
+       (*** No match ***)
+       | [] ->
+         raise_errorf
+           ~loc
+           "(ppx_fillup) Instance not found: %a"
+           Printtyp.type_scheme
+           texp.exp_type)
+    | _ -> super.expr self texp
 
   let untyper f =
     let super = default_untyper in
@@ -259,6 +264,7 @@ module Typed = struct
     let loc = Location.none in
     let hide_warn20 = To_ocaml.structure_item [%stri [@@@warning "-20"]] in
     let str = hide_warn20 :: str in
+    holes := uniq !holes;
     let rec loop str =
       (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
       let tstr = type_structure env str in
@@ -428,8 +434,11 @@ module Untyped = struct
                      ( attr.attr_name.txt = instance_name
                      , attr.attr_name.txt = rec_instance_name )
                    with
-                   | true, false -> [ id_binding; id_definition ]
+                   | true, false ->
+                     register_hole id_name;
+                     [ id_binding; id_definition ]
                    | false, true ->
+                     register_hole id_name;
                      [ id_binding
                      ; { id_definition with
                          pvb_expr = this#transform_rec_instance id_name pvb_expr
@@ -457,6 +466,7 @@ module Untyped = struct
            with
            | None -> super#expression expr
            | Some id ->
+             register_hole id;
              super#expression @@ rest
              |> Exp.open_ ~loc @@ instantiate_open ~loc id popen_expr)
         | _ -> super#expression expr
@@ -474,6 +484,7 @@ module Untyped = struct
            with
            | None -> super#structure_item stri
            | Some id ->
+             register_hole id;
              super#structure_item @@ Str.open_ ~loc @@ instantiate_open ~loc id popen_expr)
         | _ -> super#structure_item stri
     end
@@ -517,7 +528,7 @@ module Untyped = struct
 
   (*** Transform structure ***)
   let transform (str : Parsetree.structure) =
-    let rec loop str' =
+    (* let rec loop str' =
       match str' with
       | { pstr_desc = Pstr_attribute { attr_name; _ }; _ } :: _
         when attr_name.txt = "fillup" ->
@@ -540,5 +551,20 @@ module Untyped = struct
       | _ :: rest -> loop rest
       | [] -> str
     in
-    loop str
+    loop str *)
+    if Ocaml_common.Ast_mapper.tool_name () = "ocamldoc"
+       || Ocaml_common.Ast_mapper.tool_name () = "ocamldep"
+    then (* avoid typer *)
+      (new preprocess)#structure str |> (new postprocess)#structure
+    else (
+      let str =
+        (new preprocess)#structure str
+        |> To_ocaml.structure
+        (* |> expr_mapper Typed.alert_filled *)
+        |> Typed.fillup
+        |> Of_ocaml.structure
+        |> (new postprocess)#structure
+      in
+      (* Format.eprintf "\n%a\n" Pprintast.structure str; *)
+      str)
 end
